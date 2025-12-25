@@ -1,0 +1,50 @@
+.score-editor {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.score-editor.loading {
+  text-align: center;
+  padding: 4rem;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #eee;
+}
+
+.editor-toolbar h2 {
+  margin: 0;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.editor-instructions {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.editor-instructions h3 {
+  margin-top: 0;
+}
+
+.editor-instructions ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.editor-instructions li {
+  margin: 0.5rem 0;
+}
