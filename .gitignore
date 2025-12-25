@@ -232,6 +232,7 @@ frontend/.env.production
 
 # Storage (contains sensitive cookies)
 storage/*.txt
+storage/*.musicxml
 storage/*.json
 storage/youtube_cookies*
 !storage/README.txt

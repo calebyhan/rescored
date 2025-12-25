@@ -20,6 +20,31 @@ class Settings(BaseSettings):
     gpu_enabled: bool = True
     max_video_duration: int = 900  # 15 minutes
 
+    # Transcription Configuration (basic-pitch)
+    onset_threshold: float = 0.3  # Note onset confidence (0-1). Lower = more notes detected, better for soft piano
+    frame_threshold: float = 0.3  # Frame activation threshold (0-1)
+    minimum_note_length: int = 127  # Minimum note samples (~58ms at 44.1kHz)
+
+    # Tempo Detection Configuration
+    tempo_detection_duration: int = 60  # Seconds of audio to analyze
+    tempo_confidence_threshold: float = 0.5  # Min confidence to use detected tempo
+
+    # Time Signature Detection Configuration
+    time_sig_confidence_threshold: float = 0.6  # Min confidence to use detected time sig
+
+    # Key Detection Configuration
+    key_confidence_threshold: float = 0.7  # Min confidence to use detected key
+
+    # Note Merging Configuration
+    note_merge_gap_threshold: int = 150  # Max gap in ms to merge consecutive notes (increased to catch quantized gaps)
+
+    # Measure Normalization Configuration
+    fast_tempo_threshold: int = 140  # BPM threshold for 32nd note quantization
+
+    # Grand Staff Configuration
+    enable_grand_staff: bool = True  # Split piano into treble + bass clefs
+    middle_c_split: int = 60  # MIDI note number for staff split (60 = Middle C)
+
     # CORS Configuration
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
