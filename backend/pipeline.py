@@ -10,14 +10,16 @@ import tempfile
 from typing import Optional
 import mido
 import librosa
-from piano_transcription_inference import PianoTranscription, sample_rate
+import numpy as np
+from basic_pitch.inference import predict_and_save
+from basic_pitch import ICASSP_2022_MODEL_PATH
 from music21 import converter, key, meter, tempo, note, clef, stream, chord as m21_chord
 
 
 class TranscriptionPipeline:
     """Handles the complete transcription workflow."""
 
-    def __init__(self, job_id: str, youtube_url: str, storage_path: Path):
+    def __init__(self, job_id: str, youtube_url: str, storage_path: Path, config=None):
         self.job_id = job_id
         self.youtube_url = youtube_url
         self.storage_path = storage_path
@@ -25,8 +27,12 @@ class TranscriptionPipeline:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.progress_callback = None
 
-        # Initialize ByteDance piano transcription model (lazy loading)
-        self._transcriptor = None
+        # Load configuration
+        if config is None:
+            from config import settings
+            self.config = settings
+        else:
+            self.config = config
 
     def set_progress_callback(self, callback):
         """Set callback for progress updates: callback(percent, stage, message)"""
@@ -124,58 +130,110 @@ class TranscriptionPipeline:
 
         return stems
 
-    def _get_transcriptor(self):
-        """Lazy load ByteDance piano transcription model."""
-        if self._transcriptor is None:
-            import torch
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            print(f"   Loading ByteDance piano transcription model on {device}...")
-            self._transcriptor = PianoTranscription(device=device, checkpoint_path=None)
-        return self._transcriptor
-
-    def transcribe_to_midi(self, audio_path: Path) -> Path:
+    def transcribe_to_midi(
+        self,
+        audio_path: Path,
+        onset_threshold: float = None,
+        frame_threshold: float = None,
+        minimum_note_length: int = None
+    ) -> Path:
         """
-        Transcribe audio to MIDI using ByteDance piano_transcription.
+        Transcribe audio to MIDI using basic-pitch.
 
         Args:
             audio_path: Path to audio file (should be 'other' stem for piano)
+            onset_threshold: Note onset confidence (0-1). Higher = fewer false positives
+            frame_threshold: Frame activation threshold (0-1)
+            minimum_note_length: Minimum note duration in samples (~58ms at 44.1kHz)
 
         Returns:
             Path to generated MIDI file
         """
+        # Use config defaults if not specified
+        if onset_threshold is None:
+            onset_threshold = self.config.onset_threshold
+        if frame_threshold is None:
+            frame_threshold = self.config.frame_threshold
+        if minimum_note_length is None:
+            minimum_note_length = self.config.minimum_note_length
+
         output_dir = self.temp_dir
         midi_path = output_dir / "piano.mid"
 
-        # Load audio with librosa (ByteDance expects specific sample rate and mono)
-        print(f"   Loading audio from {audio_path}...")
-        audio, _ = librosa.load(str(audio_path), sr=sample_rate, mono=True)
+        print(f"   Transcribing with basic-pitch (onset={onset_threshold}, frame={frame_threshold})...")
 
-        # Get transcriptor (lazy loaded)
-        transcriptor = self._get_transcriptor()
+        # Run basic-pitch inference
+        # predict_and_save creates output files in the output directory
+        predict_and_save(
+            audio_path_list=[str(audio_path)],
+            output_directory=str(output_dir),
+            save_midi=True,
+            sonify_midi=False,  # Don't create audio
+            save_model_outputs=False,  # Don't save raw outputs
+            save_notes=False,  # Don't save CSV
+            model_or_model_path=ICASSP_2022_MODEL_PATH,
+            onset_threshold=onset_threshold,
+            frame_threshold=frame_threshold,
+            minimum_note_length=minimum_note_length,
+            minimum_frequency=None,
+            maximum_frequency=None,
+            multiple_pitch_bends=False,
+            melodia_trick=True,  # Improves monophonic melody
+            debug_file=None
+        )
 
-        # Transcribe to MIDI
-        print(f"   Transcribing with ByteDance model...")
-        transcriptor.transcribe(audio, str(midi_path))
+        # basic-pitch saves as {audio_stem}_basic_pitch.mid
+        generated_midi = output_dir / f"{audio_path.stem}_basic_pitch.mid"
 
-        if not midi_path.exists():
-            raise RuntimeError("ByteDance transcription did not create MIDI file")
+        if not generated_midi.exists():
+            raise RuntimeError("basic-pitch did not create MIDI file")
 
-        # Post-process MIDI (quantize, clean up)
-        cleaned_midi = self.clean_midi(midi_path)
+        # Rename to expected path
+        generated_midi.rename(midi_path)
 
-        return cleaned_midi
+        # Detect tempo from source audio for accurate post-processing
+        source_audio = self.temp_dir / "audio.wav"
+        if source_audio.exists():
+            detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
+        else:
+            detected_tempo = 120.0  # Fallback
 
-    def clean_midi(self, midi_path: Path) -> Path:
+        # Post-process MIDI (new pipeline)
+        # 1. Clean (filter invalid notes, light quantization)
+        cleaned_midi = self.clean_midi(midi_path, detected_tempo=detected_tempo)
+
+        # 2. Merge consecutive notes (fix choppy phrases) - now uses actual tempo
+        merged_midi = self.merge_consecutive_notes(
+            cleaned_midi,
+            gap_threshold_ms=self.config.note_merge_gap_threshold,
+            tempo_bpm=detected_tempo
+        )
+
+        # 3. Detect repeated patterns (validation)
+        self.detect_repeated_note_patterns(merged_midi)
+
+        return merged_midi
+
+    def clean_midi(self, midi_path: Path, detected_tempo: float = 120.0) -> Path:
         """
-        Clean up MIDI file: filter invalid notes, remove very short notes, light quantization.
+        Clean up MIDI file with beat-aligned quantization.
 
         Args:
             midi_path: Path to raw MIDI file
+            detected_tempo: Detected tempo in BPM (for intelligent quantization)
 
         Returns:
             Path to cleaned MIDI file
         """
         mid = mido.MidiFile(midi_path)
+
+        # Calculate quantization grid based on tempo
+        # At 120 BPM: 16th note = 125ms, 32nd note = 62.5ms
+        # Use 32nd notes for fast tempos, 16th notes otherwise
+        if detected_tempo > self.config.fast_tempo_threshold:
+            quantize_division = 8  # 32nd notes
+        else:
+            quantize_division = 4  # 16th notes
 
         # First pass: collect all notes with timing info to filter by duration
         for track in mid.tracks:
@@ -237,21 +295,18 @@ class TranscriptionPipeline:
 
                 messages_to_keep.append((msg, abs_time))
 
-            # Third pass: rebuild track with delta times and light quantization
+            # Third pass: rebuild track with beat-aligned quantization
             track.clear()
             previous_time = 0
 
-            # Use 16th note quantization grid (less aggressive than 8th)
-            ticks_per_16th = mid.ticks_per_beat // 4
+            # Use tempo-aware quantization grid
+            ticks_per_quantum = mid.ticks_per_beat // quantize_division
 
             for msg, abs_time in messages_to_keep:
                 if msg.type in ['note_on', 'note_off']:
-                    # Light quantization - only snap if close to grid (within 10%)
-                    nearest_grid = round(abs_time / ticks_per_16th) * ticks_per_16th
-                    snap_threshold = ticks_per_16th * 0.1
-
-                    if abs(abs_time - nearest_grid) < snap_threshold:
-                        abs_time = nearest_grid
+                    # Beat-aligned quantization - always snap to grid
+                    quantized_time = round(abs_time / ticks_per_quantum) * ticks_per_quantum
+                    abs_time = quantized_time
 
                 # Set delta time from previous message
                 msg.time = max(0, abs_time - previous_time)
@@ -264,9 +319,186 @@ class TranscriptionPipeline:
 
         return cleaned_path
 
+    def merge_consecutive_notes(self, midi_path: Path, gap_threshold_ms: int = 50, tempo_bpm: float = 120.0) -> Path:
+        """
+        Merge consecutive notes of same pitch with small gaps to create smooth phrases.
+
+        Problem: basic-pitch sometimes splits sustained notes into multiple short notes
+        with tiny gaps, creating "choppy" notation.
+
+        Solution: Merge notes with same pitch if gap < threshold (default 50ms).
+
+        Args:
+            midi_path: Path to MIDI file
+            gap_threshold_ms: Maximum gap in milliseconds to merge (50ms = barely perceptible)
+            tempo_bpm: Tempo in BPM for accurate tick-to-time conversion
+
+        Returns:
+            Path to MIDI with merged notes
+        """
+        mid = mido.MidiFile(midi_path)
+
+        for track in mid.tracks:
+            absolute_time = 0
+            note_events = []  # List of (abs_time, msg_type, note_num, velocity, original_msg)
+
+            # First pass: collect all note events with absolute timing
+            for msg in track:
+                absolute_time += msg.time
+                if msg.type in ['note_on', 'note_off']:
+                    note_events.append((absolute_time, msg.type, msg.note, msg.velocity, msg))
+
+            # Second pass: identify notes to merge
+            # Track active notes: note_num -> (start_time, start_velocity)
+            active_notes = {}
+            completed_notes = []  # List of (note_num, start_time, end_time, velocity)
+
+            for abs_time, msg_type, note_num, velocity, original_msg in note_events:
+                if msg_type == 'note_on' and velocity > 0:
+                    # Note starts
+                    if note_num in active_notes:
+                        # Overlapping note (shouldn't happen after deduplication, but handle it)
+                        # End previous note
+                        start_time, start_vel = active_notes[note_num]
+                        completed_notes.append((note_num, start_time, abs_time, start_vel))
+
+                    active_notes[note_num] = (abs_time, velocity)
+
+                elif msg_type in ['note_off', 'note_on']:  # note_on with vel=0 is note_off
+                    # Note ends
+                    if note_num in active_notes:
+                        start_time, start_vel = active_notes.pop(note_num)
+                        completed_notes.append((note_num, start_time, abs_time, start_vel))
+
+            # Third pass: merge notes with same pitch and small gaps
+            # Convert ms to ticks: ms → seconds → beats → ticks
+            # At tempo_bpm: 1 beat = (60 / tempo_bpm) seconds
+            seconds_per_beat = 60.0 / tempo_bpm
+            gap_threshold_ticks = (gap_threshold_ms / 1000.0) / seconds_per_beat * mid.ticks_per_beat
+
+            # Group notes by pitch, then sort each group by time
+            from collections import defaultdict
+            notes_by_pitch = defaultdict(list)
+            for note_num, start, end, vel in completed_notes:
+                notes_by_pitch[note_num].append((start, end, vel))
+
+            # Sort each pitch group by start time
+            for pitch in notes_by_pitch:
+                notes_by_pitch[pitch].sort()
+
+            # Merge consecutive notes within each pitch group
+            merged_notes = []
+            for note_num, note_list in notes_by_pitch.items():
+                i = 0
+                while i < len(note_list):
+                    start, end, vel = note_list[i]
+
+                    # Look ahead for notes with small gaps
+                    j = i + 1
+                    while j < len(note_list):
+                        next_start, next_end, next_vel = note_list[j]
+                        gap = next_start - end
+
+                        if gap <= gap_threshold_ticks:
+                            # Merge: extend end time, keep higher velocity
+                            end = next_end
+                            vel = max(vel, next_vel)
+                            j += 1
+                        else:
+                            break
+
+                    merged_notes.append((note_num, start, end, vel))
+                    i = j if j > i + 1 else i + 1
+
+            # Fourth pass: rebuild track with merged notes
+            # Create new note events
+            new_note_events = []
+            for note_num, start, end, vel in merged_notes:
+                new_note_events.append((start, 'note_on', note_num, vel))
+                new_note_events.append((end, 'note_off', note_num, 0))
+
+            # Sort by time
+            new_note_events.sort(key=lambda x: x[0])
+
+            # Rebuild track with delta times
+            track.clear()
+            previous_time = 0
+            for abs_time, msg_type, note_num, velocity in new_note_events:
+                delta_time = abs_time - previous_time
+                track.append(mido.Message(msg_type, note=note_num, velocity=velocity, time=delta_time))
+                previous_time = abs_time
+
+            # Add end of track
+            track.append(mido.MetaMessage('end_of_track', time=0))
+
+        # Save merged MIDI
+        merged_path = midi_path.with_stem(f"{midi_path.stem}_merged")
+        mid.save(merged_path)
+
+        print(f"   Merged consecutive notes (gap threshold: {gap_threshold_ms}ms)")
+
+        return merged_path
+
+    def detect_repeated_note_patterns(self, midi_path: Path) -> Path:
+        """
+        Detect intentional repeated notes (vs. artifacts from chopped sustains).
+
+        Pattern: If a note repeats 3+ times at regular intervals, it's intentional (e.g., staccato).
+        Otherwise, it might be a chopped sustain that should have been merged.
+
+        This is a VALIDATION method, not a correction method. Logs warnings for review.
+        """
+        mid = mido.MidiFile(midi_path)
+
+        # Collect note onsets
+        note_onsets = []  # List of (time, note_num)
+        abs_time = 0
+
+        for track in mid.tracks:
+            for msg in track:
+                abs_time += msg.time
+                if msg.type == 'note_on' and msg.velocity > 0:
+                    note_onsets.append((abs_time, msg.note))
+
+        # Group by note number
+        from collections import defaultdict
+        notes_by_pitch = defaultdict(list)
+        for time, note_num in note_onsets:
+            notes_by_pitch[note_num].append(time)
+
+        # Detect repeated patterns
+        for note_num, times in notes_by_pitch.items():
+            if len(times) >= 3:
+                # Calculate intervals
+                intervals = [times[i+1] - times[i] for i in range(len(times) - 1)]
+
+                # Check if intervals are regular (coefficient of variation < 0.2)
+                mean_interval = np.mean(intervals)
+                std_interval = np.std(intervals)
+                cv = std_interval / mean_interval if mean_interval > 0 else 0
+
+                if cv < 0.2 and mean_interval < mid.ticks_per_beat:  # Regular and fast
+                    # This is likely intentional repetition
+                    note_name = note.Note(note_num).nameWithOctave
+                    print(f"   INFO: Detected repeated note pattern: {note_name} ({len(times)} times)")
+
+        return midi_path
+
     def generate_musicxml(self, midi_path: Path) -> Path:
         """
-        Convert MIDI to MusicXML using music21, with grand staff for piano.
+        Convert MIDI to MusicXML with intelligent metadata detection and normalization.
+
+        New pipeline order (optimized):
+        1. Detect metadata from audio (tempo, time signature)
+        2. Parse MIDI
+        3. Detect key (ensemble)
+        4. Insert metadata
+        5. Deduplicate overlapping notes
+        6. Add clef
+        7. makeMeasures()
+        8. Normalize measure durations
+        9. Validate measures
+        10. Export MusicXML
 
         Args:
             midi_path: Path to input MIDI file
@@ -274,114 +506,127 @@ class TranscriptionPipeline:
         Returns:
             Path to output MusicXML file
         """
-        self.progress(92, "musicxml", "Parsing MIDI")
+        self.progress(92, "musicxml", "Detecting metadata from audio")
 
-        # Parse MIDI
+        # Step 1: Detect metadata from audio BEFORE parsing MIDI
+        audio_path = self.temp_dir / "audio.wav"
+
+        if audio_path.exists():
+            # Detect tempo
+            detected_tempo, tempo_confidence = self.detect_tempo_from_audio(audio_path)
+
+            # Detect time signature (needs tempo)
+            time_sig_num, time_sig_denom, ts_confidence = self.detect_time_signature(
+                audio_path, detected_tempo
+            )
+        else:
+            # Fallback if audio not available
+            print("   WARNING: Audio file not found, using defaults")
+            detected_tempo, tempo_confidence = 120.0, 0.0
+            time_sig_num, time_sig_denom, ts_confidence = 4, 4, 0.0
+
+        self.progress(93, "musicxml", "Parsing MIDI")
+
+        # Step 2: Parse MIDI
         score = converter.parse(midi_path)
 
-        self.progress(94, "musicxml", "Analyzing key signature")
+        self.progress(94, "musicxml", "Detecting key signature")
 
-        # Detect key signature
-        try:
-            analyzed_key = score.analyze('key')
-            score.insert(0, analyzed_key)
-        except:
-            # Default to C major if analysis fails
-            score.insert(0, key.Key('C'))
-
-        # Set time signature (default 4/4)
-        score.insert(0, meter.TimeSignature('4/4'))
-
-        # Extract or default tempo
-        midi_tempo = self._extract_tempo(score)
-        score.insert(0, tempo.MetronomeMark(number=midi_tempo))
+        # Step 3: Detect key using ensemble methods
+        detected_key, key_confidence = self.detect_key_ensemble(score, audio_path)
 
         self.progress(95, "musicxml", "Deduplicating overlapping notes")
 
-        # Fix overlapping polyphonic notes from basic-pitch before creating measures
-        # This prevents MusicXML corruption where measures have >4.0 beats
+        # Step 4: Deduplicate overlapping notes (prevent polyphony issues)
         score = self._deduplicate_overlapping_notes(score)
+
+        # Step 5: Clean up any very short durations BEFORE makeMeasures
+        # This prevents music21 from creating impossible tuplets
+        for part in score.parts:
+            for element in part.flatten().notesAndRests:
+                if element.quarterLength < 0.0625:  # Shorter than 64th note
+                    element.quarterLength = 0.0625  # Round up to 64th note
 
         self.progress(96, "musicxml", "Creating measures")
 
-        # For MVP: Use single staff with treble clef
-        # Grand staff splitting causes issues with overlapping polyphonic notes from basic-pitch
-        # TODO: Implement proper grand staff in Phase 2 with better note splitting algorithm
-
-        # Add treble clef (most piano music reads treble, bass notes will show ledger lines)
-        for part in score.parts:
-            part.insert(0, clef.TrebleClef())
-            part.partName = "Piano"
-
-        # Create measures
+        # Step 6: Create measures FIRST (required before grand staff split)
         score = score.makeMeasures()
 
-        # Remove impossible note durations that makeMeasures() might have created
+        # Step 7: Split into grand staff (treble + bass clefs) if enabled
+        if self.config.enable_grand_staff:
+            print(f"   Splitting into grand staff (split at MIDI note {self.config.middle_c_split})...")
+            score = self._split_into_grand_staff(score)
+            print(f"   Created {len(score.parts)} staves (treble + bass)")
+
+            # Insert metadata into each part (grand staff creates new parts without metadata)
+            for part in score.parts:
+                # Get the first measure
+                measures = part.getElementsByClass('Measure')
+                if measures:
+                    first_measure = measures[0]
+                    # Insert key, time signature, and tempo into first measure
+                    first_measure.insert(0, tempo.MetronomeMark(number=detected_tempo))
+                    first_measure.insert(0, detected_key)
+                    first_measure.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
+        else:
+            # Single staff: add treble clef and metadata
+            for part in score.parts:
+                part.insert(0, clef.TrebleClef())
+                part.insert(0, detected_key)
+                part.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
+                part.insert(0, tempo.MetronomeMark(number=detected_tempo))
+                part.partName = "Piano"
+
+        self.progress(97, "musicxml", "Normalizing measure durations")
+
+        # Step 8: Remove impossible durations that makeMeasures created
         score = self._remove_impossible_durations(score)
 
-        # Fix tuplets containing impossible durations (must be done AFTER makeMeasures)
-        # This prevents "Cannot convert 2048th duration to MusicXML" errors during export
+        # Step 9: Fix tuplets with impossible durations
         score = self._fix_tuplet_durations(score)
 
-        # Validate measure durations to catch any remaining issues
-        self._validate_measures(score)
+        # Step 10: Normalize measure durations
+        score = self._normalize_measure_durations(score, time_sig_num, time_sig_denom)
 
-        self.progress(97, "musicxml", "Finalizing score")
+        # Step 10.5: Fix any NEW impossible tuplets created during normalization
+        # Normalization might add rests that music21 assigns tuplets to
+        score = self._fix_tuplet_durations(score)
+
+        # Step 11: Validate measures (logging only)
+        self._validate_measures(score)
 
         self.progress(98, "musicxml", "Writing MusicXML file")
 
-        # Write MusicXML with retry logic for 2048th note errors
+        # Write MusicXML with proper error handling
         output_path = self.temp_dir / f"{self.job_id}.musicxml"
-        max_retries = 10  # Prevent infinite loop
-        retry_count = 0
 
-        while retry_count < max_retries:
-            try:
-                score.write('musicxml', fp=str(output_path))
-                break  # Success!
-            except Exception as e:
-                error_msg = str(e)
-                # Check if this is a 2048th note error
-                if 'Cannot convert "2048th" duration to MusicXML' in error_msg or \
-                   'Cannot convert "4096th" duration to MusicXML' in error_msg:
-                    # Extract measure number from error message
-                    import re
-                    match = re.search(r'measure \((\d+)\)', error_msg)
-                    if match:
-                        measure_num = int(match.group(1))
-                        print(f"   Fixing 2048th note error in measure {measure_num}...")
+        try:
+            # Use makeNotation=False to prevent music21 from auto-generating tuplets
+            score.write('musicxml', fp=str(output_path), makeNotation=False)
+        except Exception as e:
+            error_msg = str(e)
 
-                        # Remove ALL tuplets from this measure as a last resort
-                        for part in score.parts:
-                            measures = list(part.getElementsByClass('Measure'))
-                            if measure_num <= len(measures):
-                                problem_measure = measures[measure_num - 1]
+            # If still getting 2048th note errors after our normalization,
+            # it means music21 is creating them during export (not our fault)
+            if 'Cannot convert "2048th" duration to MusicXML' in error_msg or \
+               'Cannot convert "4096th" duration to MusicXML' in error_msg:
 
-                                # Remove ALL notes/rests from the problematic measure
-                                # The 2048th note error is created BY music21 during export
-                                # We can't prevent it, so we just empty the measure
-                                to_remove = list(problem_measure.recurse().notesAndRests)
+                print(f"   ERROR: music21 generated impossible duration during export: {error_msg}")
+                print(f"   This is a music21 bug. Try re-running with different tempo/time signature.")
 
-                                for element in to_remove:
-                                    # Remove from its container
-                                    element.activeSite.remove(element)
+                # Last resort: try exporting as MIDI instead
+                midi_fallback = self.temp_dir / f"{self.job_id}_fallback.mid"
+                score.write('midi', fp=str(midi_fallback))
+                print(f"   Created fallback MIDI export: {midi_fallback}")
 
-                                # Clear caches
-                                problem_measure.coreElementsChanged()
-                                part.coreElementsChanged()
-
-                                print(f"   Removed all {len(to_remove)} elements from measure {measure_num}")
-
-                        retry_count += 1
-                    else:
-                        # Can't parse measure number, give up
-                        raise
-                else:
-                    # Different error, give up
-                    raise
-
-        if retry_count >= max_retries:
-            raise RuntimeError(f"Failed to fix 2048th note errors after {max_retries} attempts")
+                raise RuntimeError(
+                    f"MusicXML export failed due to music21 bug. "
+                    f"MIDI fallback created at {midi_fallback}. "
+                    f"Original error: {error_msg}"
+                )
+            else:
+                # Different error, re-raise
+                raise
 
         return output_path
 
@@ -406,18 +651,18 @@ class TranscriptionPipeline:
         # Process each part
         for part in score.parts:
             # Collect all notes with their absolute offsets
-            notes_by_time = defaultdict(list)  # offset_ms -> [notes]
+            notes_by_time = defaultdict(list)  # bucket -> [notes]
 
             for element in part.flatten().notesAndRests:
                 if isinstance(element, note.Rest):
                     continue  # Skip rests for deduplication
 
-                # Get absolute offset in quarter notes, convert to milliseconds for bucketing
+                # Get absolute offset in quarter notes
                 offset_qn = element.offset
-                offset_ms = round(offset_qn * 1000)  # Convert to ms for 10ms bucketing
 
-                # Bucket into 10ms slots (merge notes within 10ms of each other)
-                bucket = (offset_ms // 10) * 10
+                # Bucket notes that are within 0.01 quarter notes of each other (~10ms at 120 BPM)
+                # This groups truly simultaneous notes without merging sequential notes
+                bucket = round(offset_qn / 0.01) * 0.01
 
                 if isinstance(element, note.Note):
                     notes_by_time[bucket].append(element)
@@ -436,8 +681,8 @@ class TranscriptionPipeline:
             new_part.id = part.id
             new_part.partName = part.partName
 
-            for bucket_ms in sorted(notes_by_time.keys()):
-                bucket_notes = notes_by_time[bucket_ms]
+            for bucket_qn in sorted(notes_by_time.keys()):
+                bucket_notes = notes_by_time[bucket_qn]
 
                 if not bucket_notes:
                     continue
@@ -469,8 +714,8 @@ class TranscriptionPipeline:
                 if not unique_notes:
                     continue  # Skip if all notes were too short
 
-                # Convert back to quarter notes for offset
-                offset_qn = bucket_ms / 1000.0
+                # Use bucket quarter note offset directly
+                offset_qn = bucket_qn
 
                 if len(unique_notes) == 1:
                     # Single note - snap duration to avoid impossible tuplets
@@ -514,6 +759,86 @@ class TranscriptionPipeline:
 
         return nearest
 
+    def _snap_to_valid_duration(self, duration: float) -> float:
+        """
+        Snap duration to nearest valid music21 duration.
+
+        Valid durations: whole, half, quarter, eighth, 16th, 32nd, 64th, 128th
+        Also supports dotted notes (1.5x) and double-dotted (1.75x)
+
+        Args:
+            duration: Quarter length as float
+
+        Returns:
+            Snapped quarter length
+        """
+        # Base durations (in quarter notes)
+        base_durations = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125]
+
+        # Add dotted and double-dotted variants
+        valid_durations = []
+        for base in base_durations:
+            valid_durations.append(base)  # Normal
+            valid_durations.append(base * 1.5)  # Dotted
+            valid_durations.append(base * 1.75)  # Double-dotted
+
+        # Find nearest
+        nearest = min(valid_durations, key=lambda x: abs(x - duration))
+
+        return nearest
+
+    def _normalize_measure_durations(self, score, time_sig_numerator: int = 4, time_sig_denominator: int = 4):
+        """
+        Normalize note durations to fit measures, using detected time signature.
+
+        Instead of removing notes, adjust durations to fill measures correctly.
+
+        Args:
+            score: music21 Score with measures
+            time_sig_numerator: Detected time signature numerator
+            time_sig_denominator: Detected time signature denominator
+
+        Returns:
+            Normalized score
+        """
+        expected_duration = (time_sig_numerator / time_sig_denominator) * 4.0  # Quarter notes
+
+        for part in score.parts:
+            for measure in part.getElementsByClass('Measure'):
+                # Get all notes and chords
+                elements = list(measure.notesAndRests)
+
+                if not elements:
+                    continue
+
+                # Calculate actual duration
+                actual_duration = sum(e.quarterLength for e in elements)
+
+                if abs(actual_duration - expected_duration) < 0.01:
+                    continue  # Already correct
+
+                # Normalize durations proportionally
+                scale_factor = expected_duration / actual_duration if actual_duration > 0 else 1.0
+
+                for element in elements:
+                    # Scale duration
+                    new_duration = element.quarterLength * scale_factor
+
+                    # Snap to valid music21 duration
+                    element.quarterLength = self._snap_to_valid_duration(new_duration)
+
+                # Verify total duration after normalization
+                new_total = sum(e.quarterLength for e in measure.notesAndRests)
+
+                if abs(new_total - expected_duration) > 0.1:
+                    # Still wrong, add rest to fill
+                    gap = expected_duration - new_total
+                    if gap > 0.0625:  # Only add rest if > 64th note
+                        rest = note.Rest(quarterLength=gap)
+                        measure.append(rest)
+
+        return score
+
     def _remove_impossible_durations(self, score):
         """
         Remove notes/rests with durations too short for MusicXML export (<128th note).
@@ -529,11 +854,11 @@ class TranscriptionPipeline:
         """
         from music21 import note, stream
 
-        # Be VERY aggressive - remove anything shorter than 16th note
-        # ByteDance transcription creates many very short notes that cause music21
-        # to generate complex tuplets with impossible durations (2048th notes)
-        # By filtering aggressively, we prevent this MusicXML export error
-        MIN_DURATION = 0.25  # 16th note (1.0 / 4)
+        # Remove notes shorter than 32nd note to prevent impossible tuplets
+        # basic-pitch can create very short notes that cause music21 to generate
+        # complex tuplets with impossible durations (2048th notes)
+        # 32nd note is a reasonable minimum for piano music
+        MIN_DURATION = 0.125  # 32nd note (1.0 / 8)
 
         removed_count = 0
         for part in score.parts:
@@ -551,74 +876,66 @@ class TranscriptionPipeline:
                     measure.remove(element)
 
         if removed_count > 0:
-            print(f"   Removed {removed_count} notes/rests shorter than 16th note to prevent tuplet errors")
+            print(f"   Removed {removed_count} notes/rests shorter than 32nd note to prevent tuplet errors")
 
         return score
 
     def _fix_tuplet_durations(self, score):
         """
-        Fix tuplets containing notes/rests with impossible durations for MusicXML export.
+        Simplify all durations to prevent music21 from creating impossible tuplets during export.
 
-        The error occurs during MusicXML export when music21 tries to convert tuplet
-        durationNormal.type to MusicXML format. If a tuplet contains a 2048th note or
-        shorter, it will fail with MusicXMLExportException.
-
-        This method removes or fixes problematic elements within tuplets BEFORE export.
+        music21 creates tuplets on-the-fly during MusicXML export when durations don't
+        fit standard values. By rounding all durations to simple fractions, we prevent
+        the export logic from generating 2048th note tuplets.
 
         Args:
-            score: music21 Score with measures and tuplets
+            score: music21 Score with measures
 
         Returns:
-            Cleaned score
+            Cleaned score with simplified durations
         """
-        from music21 import note, stream, duration
+        from music21 import note, chord, stream, duration
 
-        # List of impossible duration types that MusicXML cannot represent
-        IMPOSSIBLE_TYPES = {'2048th', '4096th', '8192th', '16384th', '32768th'}
+        simplified_count = 0
 
-        removed_count = 0
-        fixed_tuplets = 0
+        # Simple durations that don't trigger tuplet creation (in quarter notes)
+        SIMPLE_DURATIONS = [
+            4.0,    # Whole note
+            3.0,    # Dotted half
+            2.0,    # Half note
+            1.5,    # Dotted quarter
+            1.0,    # Quarter note
+            0.75,   # Dotted eighth
+            0.5,    # Eighth note
+            0.375,  # Dotted 16th
+            0.25,   # 16th note
+        ]
 
         for part in score.parts:
-            for measure_idx, measure in enumerate(part.getElementsByClass('Measure')):
-                # Collect elements to remove (can't modify while iterating)
-                to_remove = []
-
-                # Check all notes and rests in the measure (not flattened - direct children)
+            for measure in part.getElementsByClass('Measure'):
+                # Process all notes, rests, and chords
                 for element in measure.notesAndRests:
-                    should_remove = False
+                    original_duration = element.quarterLength
 
-                    # Check if this element is part of a tuplet
+                    # Round to nearest simple duration
+                    nearest_duration = min(SIMPLE_DURATIONS, key=lambda x: abs(x - original_duration))
+
+                    if abs(original_duration - nearest_duration) > 0.01:
+                        element.quarterLength = nearest_duration
+                        simplified_count += 1
+
+                    # Strip any tuplets that might exist
                     if element.duration.tuplets:
-                        # Check each tuplet attached to this element
-                        for tuplet in element.duration.tuplets:
-                            # Check if the tuplet's durationNormal has an impossible type
-                            if hasattr(tuplet, 'durationNormal') and tuplet.durationNormal:
-                                dur_type = tuplet.durationNormal.type
-                                if dur_type in IMPOSSIBLE_TYPES:
-                                    should_remove = True
-                                    fixed_tuplets += 1
-                                    break
+                        element.duration.tuplets = ()
 
-                    # Also check the element's own duration type
-                    if element.duration.type in IMPOSSIBLE_TYPES:
-                        should_remove = True
-                        fixed_tuplets += 1
+                    # For chords, also process each note within
+                    if isinstance(element, chord.Chord):
+                        for n in element.notes:
+                            if n.duration.tuplets:
+                                n.duration.tuplets = ()
 
-                    if should_remove:
-                        to_remove.append(element)
-
-                # Remove problematic elements
-                for element in to_remove:
-                    try:
-                        measure.remove(element)
-                        removed_count += 1
-                    except Exception as e:
-                        print(f"   Warning: Could not remove element from measure {measure_idx + 1}: {e}")
-                        continue
-
-        if removed_count > 0:
-            print(f"   Fixed {fixed_tuplets} tuplets by removing {removed_count} elements with impossible durations")
+        if simplified_count > 0:
+            print(f"   Simplified {simplified_count} durations to prevent tuplet creation during export")
 
         return score
 
@@ -683,21 +1000,26 @@ class TranscriptionPipeline:
 
         # Create right hand (treble) and left hand (bass) parts
         treble_part = stream.Part()
-        treble_part.insert(0, clef.TrebleClef())
         treble_part.partName = "Piano Right Hand"
 
         bass_part = stream.Part()
-        bass_part.insert(0, clef.BassClef())
         bass_part.partName = "Piano Left Hand"
 
         # Middle C (C4) is MIDI note 60
-        SPLIT_POINT = 60
+        SPLIT_POINT = self.config.middle_c_split
 
         # Process each measure from the original part
+        first_measure = True
         for measure in original_part.getElementsByClass('Measure'):
             # Create corresponding measures for treble and bass
             treble_measure = stream.Measure(number=measure.number)
             bass_measure = stream.Measure(number=measure.number)
+
+            # Insert clefs in the first measure only
+            if first_measure:
+                treble_measure.insert(0, clef.TrebleClef())
+                bass_measure.insert(0, clef.BassClef())
+                first_measure = False
 
             # Copy time signature if present
             for ts in measure.getElementsByClass(meter.TimeSignature):
@@ -767,6 +1089,280 @@ class TranscriptionPipeline:
             if isinstance(element, tempo.MetronomeMark):
                 return int(element.number)
         return 120
+
+    def detect_tempo_from_audio(self, audio_path: Path, duration: int = None) -> tuple[float, float]:
+        """
+        Detect tempo from audio using librosa beat tracking.
+
+        Args:
+            audio_path: Path to audio file (use original audio, not stems)
+            duration: Seconds of audio to analyze (default 60)
+
+        Returns:
+            (tempo_bpm, confidence) where confidence is 0-1
+        """
+        # Use config default if not specified
+        if duration is None:
+            duration = self.config.tempo_detection_duration
+
+        print(f"   Detecting tempo from audio...")
+
+        # Load audio with librosa (analyze first N seconds for efficiency)
+        y, sr = librosa.load(str(audio_path), sr=None, mono=True, duration=duration)
+
+        # Detect tempo using librosa's beat tracker
+        tempo_value, beats = librosa.beat.beat_track(y=y, sr=sr, units='time')
+
+        # Convert tempo from numpy array to float
+        tempo_value = float(tempo_value)
+
+        # Calculate confidence based on beat consistency
+        if len(beats) > 1:
+            # Calculate inter-beat intervals
+            beat_intervals = np.diff(beats)
+            # Confidence = 1 - coefficient of variation (lower variation = higher confidence)
+            mean_interval = np.mean(beat_intervals)
+            std_interval = np.std(beat_intervals)
+            confidence = 1.0 - min(std_interval / mean_interval if mean_interval > 0 else 1.0, 1.0)
+        else:
+            confidence = 0.0
+
+        # Validate tempo range (40-240 BPM is reasonable for most music)
+        if tempo_value < 40 or tempo_value > 240:
+            print(f"   WARNING: Detected tempo {tempo_value:.1f} BPM outside valid range, using 120 BPM")
+            return 120.0, 0.0
+
+        print(f"   Detected tempo: {tempo_value:.1f} BPM (confidence: {confidence:.2f})")
+
+        return float(tempo_value), float(confidence)
+
+    def detect_time_signature(self, audio_path: Path, detected_tempo: float) -> tuple[int, int, float]:
+        """
+        Detect time signature from beat pattern analysis.
+
+        Args:
+            audio_path: Path to audio file
+            detected_tempo: Previously detected tempo in BPM
+
+        Returns:
+            (numerator, denominator, confidence) e.g., (4, 4, 0.85)
+        """
+        print(f"   Detecting time signature...")
+
+        # Load audio
+        y, sr = librosa.load(str(audio_path), sr=None, mono=True, duration=60)
+
+        # Detect beats
+        tempo_value, beats = librosa.beat.beat_track(y=y, sr=sr, units='time', start_bpm=detected_tempo)
+
+        if len(beats) < 8:
+            # Not enough beats to determine time signature
+            print(f"   WARNING: Only {len(beats)} beats detected, defaulting to 4/4")
+            return 4, 4, 0.0
+
+        # Detect strong beats (downbeats) using spectral flux
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+
+        # Find peaks in onset envelope that align with beats
+        from scipy.signal import find_peaks
+        peaks, properties = find_peaks(onset_env, prominence=0.5)
+        strong_beat_times = librosa.frames_to_time(peaks, sr=sr)
+
+        # Count beats between strong beats to determine meter
+        beat_counts = []
+        for i in range(len(strong_beat_times) - 1):
+            # Count beats between consecutive strong beats
+            start_time = strong_beat_times[i]
+            end_time = strong_beat_times[i + 1]
+            beats_in_measure = np.sum((beats >= start_time) & (beats < end_time))
+            if beats_in_measure > 0:
+                beat_counts.append(beats_in_measure)
+
+        if not beat_counts:
+            print(f"   WARNING: Could not detect beat pattern, defaulting to 4/4")
+            return 4, 4, 0.0
+
+        # Find most common beat count
+        from collections import Counter
+        beat_count_freq = Counter(beat_counts)
+        most_common_count, frequency = beat_count_freq.most_common(1)[0]
+
+        # Calculate confidence
+        confidence = frequency / len(beat_counts)
+
+        # Map beat count to time signature
+        # Common time signatures: 3/4, 4/4, 6/8, 2/4, 5/4
+        time_sig_map = {
+            2: (2, 4),
+            3: (3, 4),
+            4: (4, 4),
+            5: (5, 4),
+            6: (6, 8),  # Could be 3/4 if tempo is slow
+        }
+
+        numerator, denominator = time_sig_map.get(most_common_count, (4, 4))
+
+        print(f"   Detected time signature: {numerator}/{denominator} (confidence: {confidence:.2f})")
+
+        return numerator, denominator, float(confidence)
+
+    def detect_key_ensemble(self, score, audio_path: Path) -> tuple:
+        """
+        Detect key signature using ensemble of methods and voting.
+
+        Methods:
+        1. music21 key analysis (Krumhansl-Schmuckler)
+        2. Pitch class histogram from audio
+        3. Chroma features from librosa
+
+        Returns:
+            (detected_key, confidence)
+        """
+        print(f"   Detecting key signature with ensemble methods...")
+
+        votes = []  # List of (key_name, confidence) tuples
+
+        # Method 1: music21 analysis
+        try:
+            m21_key = score.analyze('key')
+            # music21 doesn't provide confidence, assume 0.7
+            votes.append((str(m21_key), 0.7))
+            print(f"   music21: {m21_key}")
+        except Exception as e:
+            print(f"   music21 analysis failed: {e}")
+
+        # Method 2: Chroma-based detection from audio
+        if audio_path.exists():
+            try:
+                y, sr = librosa.load(str(audio_path), sr=None, mono=True, duration=60)
+
+                # Extract chroma features
+                chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+
+                # Average chroma over time
+                chroma_mean = np.mean(chroma, axis=1)
+
+                # Krumhansl-Schmuckler key profiles (major and minor)
+                major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+                minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+
+                # Normalize profiles
+                major_profile = major_profile / np.sum(major_profile)
+                minor_profile = minor_profile / np.sum(minor_profile)
+
+                # Calculate correlation for all keys
+                pitch_classes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+                best_corr = -1
+                best_key = None
+
+                for tonic_idx in range(12):
+                    # Rotate chroma to align with tonic
+                    rotated_chroma = np.roll(chroma_mean, -tonic_idx)
+
+                    # Test major
+                    corr_major = np.corrcoef(rotated_chroma, major_profile)[0, 1]
+                    if corr_major > best_corr:
+                        best_corr = corr_major
+                        best_key = f"{pitch_classes[tonic_idx]} major"
+
+                    # Test minor
+                    corr_minor = np.corrcoef(rotated_chroma, minor_profile)[0, 1]
+                    if corr_minor > best_corr:
+                        best_corr = corr_minor
+                        best_key = f"{pitch_classes[tonic_idx]} minor"
+
+                if best_key:
+                    votes.append((best_key, best_corr))
+                    print(f"   Chroma analysis: {best_key} (corr={best_corr:.2f})")
+
+            except Exception as e:
+                print(f"   Chroma analysis failed: {e}")
+
+        # Method 3: Pitch histogram from MIDI notes
+        try:
+            pitch_counts = [0] * 12
+            for n in score.flatten().notes:
+                if hasattr(n, 'pitch'):
+                    pitch_counts[n.pitch.midi % 12] += 1
+
+            # Normalize
+            total = sum(pitch_counts)
+            if total > 0:
+                pitch_hist = np.array(pitch_counts) / total
+
+                # Same correlation approach
+                major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+                minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+                major_profile = major_profile / np.sum(major_profile)
+                minor_profile = minor_profile / np.sum(minor_profile)
+
+                pitch_classes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+                best_corr = -1
+                best_key = None
+
+                for tonic_idx in range(12):
+                    rotated_hist = np.roll(pitch_hist, -tonic_idx)
+
+                    corr_major = np.corrcoef(rotated_hist, major_profile)[0, 1]
+                    if corr_major > best_corr:
+                        best_corr = corr_major
+                        best_key = f"{pitch_classes[tonic_idx]} major"
+
+                    corr_minor = np.corrcoef(rotated_hist, minor_profile)[0, 1]
+                    if corr_minor > best_corr:
+                        best_corr = corr_minor
+                        best_key = f"{pitch_classes[tonic_idx]} minor"
+
+                if best_key:
+                    votes.append((best_key, best_corr))
+                    print(f"   Pitch histogram: {best_key} (corr={best_corr:.2f})")
+
+        except Exception as e:
+            print(f"   Pitch histogram analysis failed: {e}")
+
+        # Voting: weight by confidence
+        if not votes:
+            print(f"   WARNING: All key detection methods failed, defaulting to C major")
+            return key.Key('C'), 0.0
+
+        # Count votes (simple majority for same key)
+        from collections import defaultdict
+        key_votes = defaultdict(list)
+        for key_name, conf in votes:
+            key_votes[key_name].append(conf)
+
+        # Find key with highest total confidence
+        best_key_name = None
+        best_total_conf = 0
+        for key_name, confs in key_votes.items():
+            total_conf = sum(confs)
+            if total_conf > best_total_conf:
+                best_total_conf = total_conf
+                best_key_name = key_name
+
+        # Normalize confidence (average of votes)
+        final_confidence = best_total_conf / len(votes)
+
+        # Parse key name to music21 Key
+        # Convert "C major" -> "C", "A minor" -> "a"
+        try:
+            if ' major' in best_key_name:
+                key_string = best_key_name.replace(' major', '')
+            elif ' minor' in best_key_name:
+                key_string = best_key_name.replace(' minor', '').lower()
+            else:
+                key_string = best_key_name
+
+            detected_key = key.Key(key_string)
+        except Exception as e:
+            # Fallback
+            print(f"   Warning: Could not parse key '{best_key_name}': {e}")
+            detected_key = key.Key('C')
+            final_confidence = 0.0
+
+        print(f"   Ensemble result: {detected_key} (confidence: {final_confidence:.2f})")
+
+        return detected_key, final_confidence
 
     def cleanup(self):
         """Delete temporary files (except output)."""
