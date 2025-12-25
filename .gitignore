@@ -156,6 +156,7 @@ ENV/
 env.bak/
 venv.bak/
 CLAUDE.md
+.claude
 
 # Spyder project settings
 .spyderproject
@@ -214,3 +215,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Rescored specific
+# Backend
+backend/.env
+backend/storage/
+backend/*.musicxml
+backend/*.mid
+backend/*.wav
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.production
+
+# Storage (contains sensitive cookies)
+storage/*.txt
+storage/*.json
+storage/youtube_cookies*
+!storage/README.txt
+storage/outputs/*
+storage/temp/*
+
+# Temp files
+/tmp/
+*.tmp
+
+# Docker volumes
+docker-compose.override.yml

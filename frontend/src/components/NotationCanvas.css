@@ -1,0 +1,39 @@
+.notation-canvas-wrapper {
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.notation-canvas {
+  width: 100%;
+  height: auto;
+  overflow-x: auto;
+}
+
+.vf-stavenote {
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.vf-stavenote:hover {
+  opacity: 0.7;
+}
+
+.vf-stavenote.selected {
+  fill: #007bff;
+}
+
+.vf-stavenote.playing {
+  fill: #28a745 !important;
+  opacity: 1 !important;
+}
+
+.vf-stavenote.playing .vf-notehead {
+  fill: #28a745 !important;
+}
+
+.vf-stavenote.playing .vf-stem {
+  stroke: #28a745 !important;
+}
