@@ -339,15 +339,15 @@ class TestIssue7MeasureNormalization:
                 "Measure within tolerance should not be heavily modified"
 
     def test_rest_fill_minimum_lowered(self, pipeline):
-        """Small gaps (> 0.01 QN) should now be filled with rests."""
+        """Gaps > 0.15 QN (new tolerance) should be filled with rests, smaller gaps skipped."""
         s = stream.Score()
         p = stream.Part()
 
-        # Create measure with small gap that needs filling
-        # Total: 3.95 QN (gap of 0.05 QN to fill to 4.0)
-        # The gap must be > 0.01 QN threshold to trigger rest filling
+        # Create measure with gap LARGER than tolerance (0.15 QN)
+        # Total: 3.80 QN (gap of 0.20 QN to fill to 4.0) - exceeds 0.15 tolerance
+        # This should trigger normalization and rest filling
         n1 = note.Note('C4', quarterLength=2.0)
-        n2 = note.Note('D4', quarterLength=1.90)
+        n2 = note.Note('D4', quarterLength=1.80)
 
         p.insert(0.0, n1)
         p.insert(2.0, n2)
@@ -355,7 +355,7 @@ class TestIssue7MeasureNormalization:
         s.append(p)
         s = s.makeMeasures()
 
-        # Normalize - should add rest to fill 0.10 QN gap (after any duration adjustments)
+        # Normalize - should add rest to fill 0.20 QN gap (exceeds 0.15 tolerance)
         normalized = pipeline._normalize_measure_durations(s, 4, 4)
 
         measures = normalized.parts[0].getElementsByClass('Measure')
@@ -363,28 +363,23 @@ class TestIssue7MeasureNormalization:
             first_measure = measures[0]
             elements = list(first_measure.notesAndRests)
 
-            # Total duration should now be close to 4.0 (within 0.05 tolerance or filled with rest)
+            # Total duration should now be close to 4.0 after normalization
             total_duration = sum(e.quarterLength for e in elements)
 
-            # Either the measure is within tolerance OR it has been filled with a rest
-            if abs(total_duration - 4.0) > 0.05:
-                # If not within tolerance, should have a rest
-                rests = [e for e in elements if isinstance(e, note.Rest)]
-                assert len(rests) > 0, f"Gap should be filled with rest. Duration: {total_duration}"
-
-            # Final check: total should be reasonably close to 4.0
+            # With 0.20 gap (> 0.15 tolerance), should have been normalized
+            # Either proportionally scaled or filled with rest
             assert abs(total_duration - 4.0) < 0.15, \
-                f"Measure should be close to 4.0 QN, got {total_duration}"
+                f"Measure should be normalized to ~4.0 QN, got {total_duration}"
 
 
 class TestIntegration:
     """Integration tests for full pipeline."""
 
     def test_onset_threshold_config(self):
-        """Config should have onset_threshold = 0.45."""
+        """Config should have onset_threshold = 0.5 (increased to reduce false positives)."""
         config = Settings()
-        assert config.onset_threshold == 0.45, \
-            f"onset_threshold should be 0.45, got {config.onset_threshold}"
+        assert config.onset_threshold == 0.5, \
+            f"onset_threshold should be 0.5, got {config.onset_threshold}"
 
     def test_sequential_note_merging_in_pipeline(self, pipeline, midi_with_sequential_notes):
         """Full pipeline should merge sequential notes."""

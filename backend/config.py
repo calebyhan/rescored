@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     enable_envelope_analysis: bool = True
     enable_tie_notation: bool = True
 
+    # Phase 2: Zero-Tradeoff Solutions
+    use_madmom_tempo_detection: bool = True  # Multi-scale tempo (eliminates octave errors)
+    use_beat_synchronous_quantization: bool = True  # Beat-aligned quantization (eliminates double quantization)
+    use_omnizart_transcription: bool = False  # Better onset/offset detection (requires model download)
+
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs
     middle_c_split: int = 60  # MIDI note number for staff split (60 = Middle C)
