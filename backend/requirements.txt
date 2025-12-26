@@ -12,6 +12,7 @@ redis==5.2.1
 yt-dlp>=2025.12.8
 soundfile==0.12.1
 librosa>=0.11.0
+madmom>=0.16.1  # Zero-tradeoff: Beat tracking and multi-scale tempo detection
 scipy
 torch>=2.0.0
 torchaudio>=2.9.1
@@ -19,7 +20,8 @@ torchcodec>=0.9.1
 demucs>=3.0.6
 
 # Pitch detection (macOS default runtime is CoreML)
-basic-pitch==0.4.0
+basic-pitch==0.4.0  # Will be replaced by Omnizart for better accuracy
+omnizart>=0.5.0  # Zero-tradeoff: Better onset/offset detection than basic-pitch
 
 # Music Processing
 music21==9.3.0
