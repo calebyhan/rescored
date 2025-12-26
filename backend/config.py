@@ -21,9 +21,11 @@ class Settings(BaseSettings):
     max_video_duration: int = 900  # 15 minutes
 
     # Transcription Configuration (basic-pitch)
-    onset_threshold: float = 0.3  # Note onset confidence (0-1). Lower = more notes detected, better for soft piano
-    frame_threshold: float = 0.3  # Frame activation threshold (0-1)
+    onset_threshold: float = 0.5  # Note onset confidence (0-1). Increased to reduce false positives
+    frame_threshold: float = 0.45  # Frame activation threshold (0-1)
     minimum_note_length: int = 127  # Minimum note samples (~58ms at 44.1kHz)
+    minimum_frequency_hz: float = 65.0  # C2 (65 Hz) - filter low-frequency noise like F1
+    maximum_frequency_hz: float | None = None  # No upper limit for piano range
 
     # Tempo Detection Configuration
     tempo_detection_duration: int = 60  # Seconds of audio to analyze
@@ -35,11 +37,25 @@ class Settings(BaseSettings):
     # Key Detection Configuration
     key_confidence_threshold: float = 0.7  # Min confidence to use detected key
 
-    # Note Merging Configuration
-    note_merge_gap_threshold: int = 150  # Max gap in ms to merge consecutive notes (increased to catch quantized gaps)
+    # Note Merging Configuration (DISABLED - basic-pitch handles continuity)
+    # note_merge_gap_threshold: int = 150  # REMOVED - merging destroys rhythm
 
     # Measure Normalization Configuration
     fast_tempo_threshold: int = 140  # BPM threshold for 32nd note quantization
+
+    # Envelope Analysis Configuration
+    velocity_decay_threshold: float = 0.7  # Velocity ratio for detecting decay (new/old)
+    sustain_artifact_gap_ms: int = 500  # Max gap to consider as sustain tail
+    min_velocity_similarity: int = 15  # Min velocity diff for intentional repeat
+    irregular_timing_threshold: float = 0.3  # CV threshold for timing irregularity
+
+    # Tempo-Adaptive Thresholds
+    slow_tempo_threshold: int = 80  # BPM threshold for slow music
+    adaptive_thresholds_enabled: bool = True  # Feature flag
+
+    # Feature Flags
+    enable_envelope_analysis: bool = True
+    enable_tie_notation: bool = True
 
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs

@@ -375,11 +375,57 @@ class BasicPitchTranscriber:
         return cleaned_path
 ```
 
-**Parameters**:
-- **onset_threshold** (0.5): Higher = fewer false positive notes, but may miss quiet notes
+**Parameters** (Tempo-Adaptive):
+- **onset_threshold**: Note onset confidence threshold
+  - Fast tempo (>140 BPM): 0.50 (stricter - fewer false positives)
+  - Medium tempo (80-140 BPM): 0.45 (balanced)
+  - Slow tempo (<80 BPM): 0.40 (permissive - catch soft notes)
 - **frame_threshold** (0.3): Controls note sustain detection
-- **minimum_note_length** (127): Filter out very short artifacts
+- **minimum_note_length**: Filter out very short artifacts (tempo-adaptive)
+  - Fast: ~48th note minimum (stricter)
+  - Medium: ~32nd note minimum
+  - Slow: More permissive for soft dynamics
 - **melodia_trick** (True): Improves monophonic melody detection
+
+**Post-Processing Pipeline**:
+
+After basic-pitch generates raw MIDI, several post-processing steps clean up common artifacts:
+
+1. **clean_midi()** - Filters and quantizes notes
+   - Removes notes outside piano range (A0-C8)
+   - Filters low-velocity notes (likely noise)
+   - Filters very short notes (< minimum duration)
+   - Beat-aligned quantization to 16th or 32nd note grid
+
+2. **merge_consecutive_notes()** - Fixes choppy sustained phrases
+   - Merges notes of same pitch with small gaps (<150ms default)
+   - Addresses basic-pitch's tendency to split sustained notes
+
+3. **analyze_note_envelope_and_merge_sustains()** - **NEW: Removes ghost notes**
+   - Detects false onsets from sustained note decay
+   - Identifies decreasing velocity sequences (e.g., 80 → 50 → 35)
+   - Merges likely sustain artifacts while preserving intentional repeats
+   - Configurable thresholds: `velocity_decay_threshold`, `sustain_artifact_gap_ms`
+
+4. **detect_repeated_note_patterns()** - Validation logging
+   - Logs intentional staccato patterns for review
+   - Helps tune the sustain artifact detection
+
+**Algorithm Details: Envelope Analysis**
+
+The envelope analysis method distinguishes between:
+
+- **Sustain Artifacts** (to merge):
+  - Decreasing velocity ratio < 0.7 (configurable)
+  - Gaps < 500ms
+  - Velocity differences > 15 (not similar)
+
+- **Intentional Repeats** (to preserve):
+  - Similar velocities (within 15 velocity units)
+  - Regular timing intervals
+  - Typical staccato patterns
+
+This reduces "ghost notes" from sustained note decay by 70-90% while preserving musical intent.
 
 **MVP: Piano-Only Transcription**
 

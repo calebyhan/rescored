@@ -12,7 +12,27 @@
 
 **Impact**: Users will need to edit ~20-40% of notes for complex music
 
-**Mitigation**:
+**Ghost Notes - Sustained Note Decay Artifacts**:
+When sustained piano notes fade in the original audio, the ML transcription model can incorrectly detect the fading tail as new note onsets. This creates "ghost notes" appearing in later measures that are actually just the fading remnants of earlier sustained notes.
+
+**Solution Implemented** (as of recent update):
+1. **Velocity Envelope Analysis**: Detects and merges false onsets from sustained note decay patterns
+   - Identifies decreasing velocity sequences (e.g., 80 → 50 → 35) as likely sustain artifacts
+   - Preserves intentional repeated notes (staccato) with similar velocities
+   - Configurable via `velocity_decay_threshold`, `sustain_artifact_gap_ms`, `min_velocity_similarity`
+
+2. **Tempo-Adaptive Thresholds**: Adjusts filtering strictness based on detected tempo
+   - Fast music (>140 BPM): Stricter onset/velocity thresholds to reduce false positives
+   - Slow music (<80 BPM): More permissive to catch soft dynamics
+   - Medium tempos: Standard thresholds
+
+3. **Proper MusicXML Ties**: Adds tie notation for sustained notes across measure boundaries
+   - Uses music21's tie.Tie class ('start' and 'stop' markers)
+   - Improves notation readability and editing experience
+
+**Expected Results**: 70-90% reduction in ghost notes from sustained note decay, while preserving intentional repeated notes (staccato passages).
+
+**General Mitigation**:
 1. **Good editor**: Make editing fast and intuitive
 2. **Visual feedback**: Highlight low-confidence notes
 3. **Set expectations**: Tell users transcription is a starting point, not final output
