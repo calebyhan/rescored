@@ -175,8 +175,8 @@ class TranscriptionPipeline:
             onset_threshold=onset_threshold,
             frame_threshold=frame_threshold,
             minimum_note_length=minimum_note_length,
-            minimum_frequency=None,
-            maximum_frequency=None,
+            minimum_frequency=self.config.minimum_frequency_hz,  # Filter low-frequency noise (F1)
+            maximum_frequency=self.config.maximum_frequency_hz,  # No upper limit
             multiple_pitch_bends=False,
             melodia_trick=True,  # Improves monophonic melody
             debug_file=None
@@ -198,21 +198,228 @@ class TranscriptionPipeline:
         else:
             detected_tempo = 120.0  # Fallback
 
-        # Post-process MIDI (new pipeline)
-        # 1. Clean (filter invalid notes, light quantization)
-        cleaned_midi = self.clean_midi(midi_path, detected_tempo=detected_tempo)
+        # Post-process MIDI (adaptive pipeline based on music type)
+        # 1. Detect if music is polyphonic (wide range) or monophonic (narrow range)
+        range_semitones = self._get_midi_range(midi_path)
 
-        # 2. Merge consecutive notes (fix choppy phrases) - now uses actual tempo
-        merged_midi = self.merge_consecutive_notes(
-            cleaned_midi,
-            gap_threshold_ms=self.config.note_merge_gap_threshold,
-            tempo_bpm=detected_tempo
-        )
+        if range_semitones > 24:
+            # Wide range (>2 octaves) = likely polyphonic piano music
+            # Preserve all notes (bass + treble)
+            print(f"   Detected wide range ({range_semitones} semitones), preserving all notes")
+            mono_midi = midi_path
+        else:
+            # Narrow range (≤2 octaves) = likely monophonic melody
+            # Remove octave duplicates using pitch class deduplication
+            print(f"   Narrow range ({range_semitones} semitones), removing octave duplicates")
+            mono_midi = self.extract_monophonic_melody(midi_path)
+
+        # 2. Clean (filter invalid notes, light quantization)
+        cleaned_midi = self.clean_midi(mono_midi, detected_tempo=detected_tempo)
 
         # 3. Detect repeated patterns (validation)
-        self.detect_repeated_note_patterns(merged_midi)
+        self.detect_repeated_note_patterns(cleaned_midi)
 
-        return merged_midi
+        return cleaned_midi
+
+    def _get_midi_range(self, midi_path: Path) -> int:
+        """
+        Calculate the MIDI note range (max - min) in semitones.
+
+        Used to detect if music is likely polyphonic (wide range like piano)
+        or monophonic (narrow range like voice or single-line instruments).
+
+        Args:
+            midi_path: Path to MIDI file
+
+        Returns:
+            Range in semitones (0 if no notes found)
+        """
+        import mido
+
+        mid = mido.MidiFile(midi_path)
+        notes = []
+
+        for track in mid.tracks:
+            for msg in track:
+                if msg.type == 'note_on' and msg.velocity > 0:
+                    notes.append(msg.note)
+
+        if not notes:
+            return 0
+
+        return max(notes) - min(notes)
+
+    def _remove_octave_duplicates(self, notes: list) -> list:
+        """
+        Remove notes that are exact octaves (12 semitones apart).
+
+        Preserves notes of different pitch classes. For example:
+        - C4 (60) + C6 (84) → keep only C6 (same pitch class, octave duplicate)
+        - D2 (38) + A5 (81) → keep both (different pitch classes, not duplicates)
+
+        Args:
+            notes: List of (note_num, start, end, vel) tuples
+
+        Returns:
+            Deduplicated list with only highest octave of each pitch class
+        """
+        from collections import defaultdict
+
+        # Group by pitch class (C=0, C#=1, ..., B=11)
+        pitch_classes = defaultdict(list)
+
+        for note_num, start, end, vel in notes:
+            pitch_class = note_num % 12
+            pitch_classes[pitch_class].append((note_num, start, end, vel))
+
+        result = []
+        for pitch_class, note_group in pitch_classes.items():
+            if len(note_group) == 1:
+                # Not a duplicate - keep it
+                result.append(note_group[0])
+            else:
+                # Multiple notes of same pitch class (C4, C5, C6)
+                # Keep the highest octave
+                highest = max(note_group, key=lambda x: x[0])
+                result.append(highest)
+
+        return result
+
+    def extract_monophonic_melody(self, midi_path: Path) -> Path:
+        """
+        Remove octave duplicates from MIDI using pitch class deduplication.
+
+        For single-instrument transcriptions, basic-pitch may detect octave duplicates
+        (e.g., C4 + C6). This removes true octave duplicates while preserving notes
+        of different pitch classes (e.g., bass + treble in piano).
+
+        Algorithm: For simultaneous notes, keep only the highest octave of each
+        pitch class (C=0, C#=1, ..., B=11). Different pitch classes are preserved.
+
+        Examples:
+        - C4 (60) + C6 (84) → keep only C6 (same pitch class 0)
+        - D2 (38) + A5 (81) → keep both (different pitch classes 2 and 9)
+
+        Args:
+            midi_path: Path to MIDI with potential octave duplicates
+
+        Returns:
+            Path to deduplicated MIDI
+        """
+        import mido
+        from collections import defaultdict
+
+        mid = mido.MidiFile(midi_path)
+
+        for track in mid.tracks:
+            # Collect all note events
+            absolute_time = 0
+            note_events = []
+
+            for msg in track:
+                absolute_time += msg.time
+                if msg.type in ['note_on', 'note_off']:
+                    note_events.append((absolute_time, msg.type, msg.note, msg.velocity, msg))
+
+            # Build note list
+            active_notes = {}
+            completed_notes = []
+
+            for abs_time, msg_type, note_num, velocity, msg in note_events:
+                if msg_type == 'note_on' and velocity > 0:
+                    active_notes[note_num] = (abs_time, velocity)
+                elif msg_type in ['note_off', 'note_on']:
+                    if note_num in active_notes:
+                        start_time, start_vel = active_notes.pop(note_num)
+                        completed_notes.append((note_num, start_time, abs_time, start_vel))
+
+            # Group by onset time (10 tick tolerance for "simultaneous")
+            ONSET_TOLERANCE = 10
+            onset_groups = defaultdict(list)
+
+            for note_num, start, end, vel in completed_notes:
+                bucket = round(start / ONSET_TOLERANCE) * ONSET_TOLERANCE
+                onset_groups[bucket].append((note_num, start, end, vel))
+
+            # Smart octave deduplication: remove only true octave duplicates
+            # Preserves different pitch classes (e.g., bass + treble in piano)
+            monophonic_notes = []
+
+            for bucket_time in sorted(onset_groups.keys()):
+                simultaneous_notes = onset_groups[bucket_time]
+
+                if len(simultaneous_notes) == 1:
+                    # Single note - keep it
+                    monophonic_notes.append(simultaneous_notes[0])
+                else:
+                    # Multiple notes - remove only octave duplicates, preserve different pitch classes
+                    deduplicated = self._remove_octave_duplicates(simultaneous_notes)
+                    monophonic_notes.extend(deduplicated)
+
+            # Rebuild track
+            new_note_events = []
+            for note_num, start, end, vel in monophonic_notes:
+                new_note_events.append((start, 'note_on', note_num, vel))
+                new_note_events.append((end, 'note_off', note_num, 0))
+
+            new_note_events.sort(key=lambda x: x[0])
+
+            track.clear()
+            previous_time = 0
+            for abs_time, msg_type, note_num, velocity in new_note_events:
+                delta_time = abs_time - previous_time
+                track.append(mido.Message(msg_type, note=note_num, velocity=velocity, time=delta_time))
+                previous_time = abs_time
+
+            track.append(mido.MetaMessage('end_of_track', time=0))
+
+        # Save monophonic MIDI
+        mono_path = midi_path.with_stem(f"{midi_path.stem}_mono")
+        mid.save(mono_path)
+
+        print(f"   Removed octave duplicates using pitch class deduplication")
+
+        return mono_path
+
+    def _get_tempo_adaptive_thresholds(self, tempo_bpm: float) -> dict:
+        """
+        Calculate adaptive thresholds based on tempo.
+
+        Fast music (>140 BPM): Stricter thresholds to avoid false positives from rapid passages
+        Medium music (80-140 BPM): Standard thresholds work well
+        Slow music (<80 BPM): More permissive to catch soft dynamics
+
+        Args:
+            tempo_bpm: Detected tempo in BPM
+
+        Returns:
+            Dictionary with threshold values for filtering
+        """
+        if not self.config.adaptive_thresholds_enabled:
+            return {
+                'onset_threshold': 0.45,
+                'min_velocity': 45,
+                'min_duration_divisor': 8,
+            }
+
+        if tempo_bpm > self.config.fast_tempo_threshold:  # > 140 BPM
+            return {
+                'onset_threshold': 0.50,  # Stricter (fewer false positives)
+                'min_velocity': 50,
+                'min_duration_divisor': 6,  # Minimum 48th note
+            }
+        elif tempo_bpm < self.config.slow_tempo_threshold:  # < 80 BPM
+            return {
+                'onset_threshold': 0.40,  # More permissive (catch soft notes)
+                'min_velocity': 40,
+                'min_duration_divisor': 10,
+            }
+        else:  # Medium tempo (80-140 BPM)
+            return {
+                'onset_threshold': 0.45,
+                'min_velocity': 45,
+                'min_duration_divisor': 8,
+            }
 
     def clean_midi(self, midi_path: Path, detected_tempo: float = 120.0) -> Path:
         """
@@ -226,6 +433,9 @@ class TranscriptionPipeline:
             Path to cleaned MIDI file
         """
         mid = mido.MidiFile(midi_path)
+
+        # Get tempo-adaptive thresholds
+        thresholds = self._get_tempo_adaptive_thresholds(detected_tempo)
 
         # Calculate quantization grid based on tempo
         # At 120 BPM: 16th note = 125ms, 32nd note = 62.5ms
@@ -257,8 +467,8 @@ class TranscriptionPipeline:
 
             # Second pass: filter messages based on criteria
             messages_to_keep = []
-            min_duration_ticks = mid.ticks_per_beat // 8  # Minimum 32nd note duration
-            min_velocity = 20  # Filter very quiet notes (likely noise)
+            min_duration_ticks = mid.ticks_per_beat // thresholds['min_duration_divisor']
+            min_velocity = thresholds['min_velocity']
             notes_to_skip = set()  # Track note_on indices to skip
 
             # Identify notes to skip based on duration
@@ -267,9 +477,8 @@ class TranscriptionPipeline:
                     notes_to_skip.add(msg_idx)
 
             for msg_idx, msg, abs_time in messages_with_abs_time:
-                # Filter out notes outside piano range (A0 = 21, C8 = 108)
-                if hasattr(msg, 'note') and (msg.note < 21 or msg.note > 108):
-                    continue
+                # Note: Frequency range filtering now handled by basic-pitch's minimum_frequency parameter
+                # No need to filter by MIDI range here
 
                 # Filter very quiet notes (likely false positives)
                 if msg.type == 'note_on' and msg.velocity > 0 and msg.velocity < min_velocity:
@@ -439,6 +648,142 @@ class TranscriptionPipeline:
 
         return merged_path
 
+    def analyze_note_envelope_and_merge_sustains(self, midi_path: Path, tempo_bpm: float = 120.0) -> Path:
+        """
+        Detect and merge false onsets from sustained note decay using velocity envelope analysis.
+
+        False onset indicators:
+        1. Decreasing velocity sequence (e.g., 80 -> 50 -> 35)
+        2. Irregular timing (high coefficient of variation)
+        3. Very short notes following long sustained notes
+
+        Algorithm:
+        - Group notes by pitch
+        - Analyze 3+ consecutive notes for velocity decay pattern
+        - Calculate timing irregularity (coefficient of variation)
+        - Merge if: velocity_ratio < threshold AND (timing_cv > threshold OR gap is small)
+
+        Args:
+            midi_path: Path to MIDI file (after merge_consecutive_notes)
+            tempo_bpm: Detected tempo for time calculations
+
+        Returns:
+            Path to MIDI with sustain artifacts removed
+        """
+        mid = mido.MidiFile(midi_path)
+
+        # Calculate gap threshold in ticks
+        seconds_per_beat = 60.0 / tempo_bpm
+        gap_threshold_ticks = (self.config.sustain_artifact_gap_ms / 1000.0) / seconds_per_beat * mid.ticks_per_beat
+
+        for track in mid.tracks:
+            absolute_time = 0
+            note_events = []
+
+            # First pass: collect all note events with absolute timing
+            for msg in track:
+                absolute_time += msg.time
+                if msg.type in ['note_on', 'note_off']:
+                    note_events.append((absolute_time, msg.type, msg.note, msg.velocity, msg))
+
+            # Group notes by pitch
+            notes_by_pitch = {}
+            for i in range(len(note_events)):
+                if note_events[i][1] == 'note_on' and note_events[i][3] > 0:
+                    pitch = note_events[i][2]
+                    start_time = note_events[i][0]
+                    velocity = note_events[i][3]
+
+                    # Find corresponding note_off
+                    for j in range(i + 1, len(note_events)):
+                        if (note_events[j][2] == pitch and
+                            (note_events[j][1] == 'note_off' or
+                             (note_events[j][1] == 'note_on' and note_events[j][3] == 0))):
+                            end_time = note_events[j][0]
+                            if pitch not in notes_by_pitch:
+                                notes_by_pitch[pitch] = []
+                            notes_by_pitch[pitch].append((start_time, end_time, velocity))
+                            break
+
+            # Analyze each pitch for velocity decay patterns
+            sustain_merges = {}  # pitch -> list of (start, end, velocity) to keep
+            for pitch, note_list in notes_by_pitch.items():
+                note_list.sort()
+
+                i = 0
+                while i < len(note_list):
+                    start, end, vel = note_list[i]
+
+                    # Look ahead for potential sustain decay artifacts
+                    merge_indices = [i]
+                    j = i + 1
+
+                    while j < len(note_list):
+                        next_start, next_end, next_vel = note_list[j]
+                        gap = next_start - end
+
+                        # Check if this looks like a sustain tail artifact
+                        velocity_ratio = next_vel / vel if vel > 0 else 1.0
+                        is_decaying = velocity_ratio < self.config.velocity_decay_threshold
+
+                        # Very similar velocities = intentional repeat (not artifact)
+                        velocity_diff = abs(next_vel - vel)
+                        is_similar_velocity = velocity_diff < self.config.min_velocity_similarity
+
+                        # Gap must be reasonable (not too large)
+                        within_gap_threshold = gap <= gap_threshold_ticks
+
+                        # Merge if: decaying velocity AND reasonable gap AND not similar velocities
+                        if is_decaying and within_gap_threshold and not is_similar_velocity:
+                            # Extend the current note
+                            end = next_end
+                            vel = max(vel, next_vel)  # Keep higher velocity
+                            merge_indices.append(j)
+                            j += 1
+                        else:
+                            break
+
+                    # If we merged any notes, save the result
+                    if pitch not in sustain_merges:
+                        sustain_merges[pitch] = []
+                    sustain_merges[pitch].append((start, end, vel))
+
+                    # Skip all merged indices
+                    i = merge_indices[-1] + 1
+
+            # Rebuild MIDI track with merged notes
+            track.clear()
+            all_notes = []
+
+            for pitch, note_list in sustain_merges.items():
+                for start, end, velocity in note_list:
+                    all_notes.append((start, 'note_on', pitch, velocity))
+                    all_notes.append((end, 'note_off', pitch, 0))
+
+            # Sort by time
+            all_notes.sort()
+
+            # Add meta messages back
+            track.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(tempo_bpm)))
+
+            # Convert back to delta time
+            previous_time = 0
+            for abs_time, msg_type, pitch, velocity in all_notes:
+                delta_time = abs_time - previous_time
+                track.append(mido.Message(msg_type, note=pitch, velocity=velocity, time=delta_time))
+                previous_time = abs_time
+
+            # Add end of track
+            track.append(mido.MetaMessage('end_of_track', time=0))
+
+        # Save envelope-analyzed MIDI
+        envelope_path = midi_path.with_stem(f"{midi_path.stem}_envelope")
+        mid.save(envelope_path)
+
+        print(f"   Analyzed envelope and merged sustain artifacts (velocity decay threshold: {self.config.velocity_decay_threshold})")
+
+        return envelope_path
+
     def detect_repeated_note_patterns(self, midi_path: Path) -> Path:
         """
         Detect intentional repeated notes (vs. artifacts from chopped sustains).
@@ -540,6 +885,11 @@ class TranscriptionPipeline:
         # Step 4: Deduplicate overlapping notes (prevent polyphony issues)
         score = self._deduplicate_overlapping_notes(score)
 
+        # Step 4.5: Merge sequential notes at music21 level (fixes Issue #8 - tiny rests)
+        # This fixes tiny rests from MIDI→music21 precision loss
+        self.progress(95, "musicxml", "Merging sequential notes")
+        score = self._merge_music21_notes(score, gap_threshold_qn=0.02)
+
         # Step 5: Clean up any very short durations BEFORE makeMeasures
         # This prevents music21 from creating impossible tuplets
         for part in score.parts:
@@ -576,6 +926,11 @@ class TranscriptionPipeline:
                 part.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
                 part.insert(0, tempo.MetronomeMark(number=detected_tempo))
                 part.partName = "Piano"
+
+        # Step 7.5: Add tie notation for sustained notes across measure boundaries
+        if self.config.enable_tie_notation:
+            print("   Adding ties for sustained notes...")
+            score = self._add_ties_to_score(score)
 
         self.progress(97, "musicxml", "Normalizing measure durations")
 
@@ -660,9 +1015,9 @@ class TranscriptionPipeline:
                 # Get absolute offset in quarter notes
                 offset_qn = element.offset
 
-                # Bucket notes that are within 0.01 quarter notes of each other (~10ms at 120 BPM)
-                # This groups truly simultaneous notes without merging sequential notes
-                bucket = round(offset_qn / 0.01) * 0.01
+                # Bucket notes that are within 0.005 quarter notes of each other (~5ms at 120 BPM)
+                # Finer resolution prevents chord notes from splitting into separate buckets
+                bucket = round(offset_qn / 0.005) * 0.005
 
                 if isinstance(element, note.Note):
                     notes_by_time[bucket].append(element)
@@ -733,6 +1088,160 @@ class TranscriptionPipeline:
 
             # Replace old part with new part
             score.replace(part, new_part)
+
+        return score
+
+    def _merge_music21_notes(self, score, gap_threshold_qn: float = 0.02):
+        """
+        Merge sequential notes of same pitch with small gaps at music21 level.
+
+        Fixes tiny rests created by makeMeasures() from MIDI→music21 precision loss.
+        MUST run AFTER deduplication but BEFORE makeMeasures.
+
+        Args:
+            score: music21 Score (before makeMeasures)
+            gap_threshold_qn: Max gap to merge (0.02 QN ≈ 20ms @ 120 BPM)
+
+        Returns:
+            Score with merged sequential notes
+        """
+        from music21 import stream, note, chord as m21_chord
+        from collections import defaultdict
+
+        for part in score.parts:
+            # Collect all notes with timing
+            elements_with_offsets = []
+
+            for element in part.flatten().notesAndRests:
+                if isinstance(element, note.Rest):
+                    continue
+
+                offset_qn = element.offset
+                duration_qn = element.quarterLength
+
+                if isinstance(element, note.Note):
+                    elements_with_offsets.append({
+                        'offset': offset_qn,
+                        'end': offset_qn + duration_qn,
+                        'pitch': element.pitch.midi,
+                        'element': element
+                    })
+                elif isinstance(element, m21_chord.Chord):
+                    # Track each chord pitch separately
+                    for pitch in element.pitches:
+                        elements_with_offsets.append({
+                            'offset': offset_qn,
+                            'end': offset_qn + duration_qn,
+                            'pitch': pitch.midi,
+                            'element': element,
+                            'chord_id': id(element)  # Prevent merging same-chord notes
+                        })
+
+            # Group by pitch and sort
+            notes_by_pitch = defaultdict(list)
+            for elem in elements_with_offsets:
+                notes_by_pitch[elem['pitch']].append(elem)
+
+            for pitch in notes_by_pitch:
+                notes_by_pitch[pitch].sort(key=lambda x: x['offset'])
+
+            # Track modifications
+            elements_to_remove = set()
+            duration_updates = {}
+
+            # Merge within each pitch group
+            for pitch, note_list in notes_by_pitch.items():
+                i = 0
+                while i < len(note_list):
+                    current = note_list[i]
+
+                    # Look ahead for mergeable notes
+                    j = i + 1
+                    while j < len(note_list):
+                        next_note = note_list[j]
+                        gap = next_note['offset'] - current['end']
+
+                        if gap <= gap_threshold_qn:
+                            # Don't merge notes from SAME chord
+                            if ('chord_id' in current and 'chord_id' in next_note and
+                                current['chord_id'] == next_note['chord_id']):
+                                break
+
+                            # Extend current to cover gap + next note
+                            new_end = next_note['end']
+                            new_duration = new_end - current['offset']
+
+                            duration_updates[id(current['element'])] = new_duration
+                            current['end'] = new_end
+
+                            elements_to_remove.add(id(next_note['element']))
+                            j += 1
+                        else:
+                            break
+
+                    i = j if j > i + 1 else i + 1
+
+            # Rebuild part with modifications
+            new_part = stream.Part()
+            new_part.id = part.id
+            new_part.partName = part.partName
+
+            for element in part.flatten().notesAndRests:
+                elem_id = id(element)
+
+                if elem_id in elements_to_remove:
+                    continue
+
+                if elem_id in duration_updates:
+                    element.quarterLength = duration_updates[elem_id]
+
+                new_part.insert(element.offset, element)
+
+            score.replace(part, new_part)
+
+        return score
+
+    def _add_ties_to_score(self, score):
+        """
+        Add tie notation to notes that span measure boundaries.
+
+        Uses music21's tie.Tie class:
+        - 'start': Beginning of tied note
+        - 'stop': End of tied note
+
+        Args:
+            score: music21 Score object
+
+        Returns:
+            Score with tie notation added
+        """
+        from music21 import tie
+
+        for part in score.parts:
+            measures = list(part.getElementsByClass('Measure'))
+
+            for measure_idx, measure in enumerate(measures):
+                for element in measure.notesAndRests:
+                    if not isinstance(element, note.Note):
+                        continue
+
+                    # Check if note extends beyond measure boundary
+                    element_end = element.offset + element.quarterLength
+                    measure_length = measure.barDuration.quarterLength
+
+                    if element_end > measure_length + 0.01:  # Tolerance for floating point
+                        # Note crosses boundary - add 'start' tie
+                        element.tie = tie.Tie('start')
+
+                        # Find continuation in next measure and add 'stop' tie
+                        if measure_idx + 1 < len(measures):
+                            next_measure = measures[measure_idx + 1]
+                            for next_elem in next_measure.notesAndRests:
+                                if (isinstance(next_elem, note.Note) and
+                                    next_elem.pitch.midi == element.pitch.midi and
+                                    next_elem.offset < 0.1):  # At start of measure
+                                    next_elem.tie = tie.Tie('stop')
+                                    break
 
         return score
 
@@ -814,8 +1323,8 @@ class TranscriptionPipeline:
                 # Calculate actual duration
                 actual_duration = sum(e.quarterLength for e in elements)
 
-                if abs(actual_duration - expected_duration) < 0.01:
-                    continue  # Already correct
+                if abs(actual_duration - expected_duration) < 0.05:
+                    continue  # Already correct (allow tolerance for quantization errors)
 
                 # Normalize durations proportionally
                 scale_factor = expected_duration / actual_duration if actual_duration > 0 else 1.0
@@ -833,7 +1342,7 @@ class TranscriptionPipeline:
                 if abs(new_total - expected_duration) > 0.1:
                     # Still wrong, add rest to fill
                     gap = expected_duration - new_total
-                    if gap > 0.0625:  # Only add rest if > 64th note
+                    if gap > 0.01:  # Fill any perceptible gap to prevent measure duration errors
                         rest = note.Rest(quarterLength=gap)
                         measure.append(rest)
 
