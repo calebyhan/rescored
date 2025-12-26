@@ -15,8 +15,15 @@ from basic_pitch.inference import predict_and_save
 from basic_pitch import ICASSP_2022_MODEL_PATH
 from music21 import converter, key, meter, tempo, note, clef, stream, chord as m21_chord
 
-# Phase 2: Zero-tradeoff solutions
+# Phase 2: Zero-tradeoff solutions with Python 3.10+ compatibility patch
 try:
+    # Apply runtime patch for Python 3.10+ compatibility
+    try:
+        from backend.madmom_patch import patch_madmom
+    except ImportError:
+        from madmom_patch import patch_madmom
+    patch_madmom()
+
     import madmom
     import madmom.features.beats
     import madmom.features.downbeats
@@ -24,11 +31,8 @@ try:
     MADMOM_AVAILABLE = True
 except ImportError as e:
     MADMOM_AVAILABLE = False
-    if "MutableSequence" in str(e):
-        print("WARNING: madmom not compatible with Python 3.10+. Falling back to librosa.")
-        print("         For madmom support, use Python 3.9 or patch madmom manually.")
-    else:
-        print(f"WARNING: madmom not available. Falling back to librosa for tempo/beat detection.")
+    print(f"WARNING: madmom not available. Falling back to librosa for tempo/beat detection.")
+    print(f"         Error: {e}")
 
 try:
     import omnizart
@@ -56,11 +60,11 @@ class TranscriptionPipeline:
         else:
             self.config = config
 
-    def set_progress_callback(self, callback):
+    def set_progress_callback(self, callback) -> None:
         """Set callback for progress updates: callback(percent, stage, message)"""
         self.progress_callback = callback
 
-    def progress(self, percent: int, stage: str, message: str):
+    def progress(self, percent: int, stage: str, message: str) -> None:
         """Report progress if callback is set."""
         if self.progress_callback:
             self.progress_callback(percent, stage, message)
@@ -1141,7 +1145,7 @@ class TranscriptionPipeline:
 
         return output_path
 
-    def _deduplicate_overlapping_notes(self, score):
+    def _deduplicate_overlapping_notes(self, score) -> stream.Score:
         """
         Deduplicate overlapping notes from basic-pitch to prevent MusicXML corruption.
 
@@ -1247,7 +1251,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _merge_music21_notes(self, score, gap_threshold_qn: float = 0.02):
+    def _merge_music21_notes(self, score, gap_threshold_qn: float = 0.02) -> stream.Score:
         """
         Merge sequential notes of same pitch with small gaps at music21 level.
 
@@ -1357,7 +1361,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _add_ties_to_score(self, score):
+    def _add_ties_to_score(self, score) -> stream.Score:
         """
         Add tie notation to notes that span measure boundaries.
 
@@ -1376,16 +1380,26 @@ class TranscriptionPipeline:
         for part in score.parts:
             measures = list(part.getElementsByClass('Measure'))
 
+            # Get time signature to determine expected measure length
+            ts = part.getElementsByClass('TimeSignature')
+            expected_measure_length = ts[0].barDuration.quarterLength if ts else 4.0
+
             for measure_idx, measure in enumerate(measures):
+                # Get the time signature for this measure if it changed
+                measure_ts = measure.getElementsByClass('TimeSignature')
+                if measure_ts:
+                    expected_measure_length = measure_ts[0].barDuration.quarterLength
+
                 for element in measure.notesAndRests:
                     if not isinstance(element, note.Note):
                         continue
 
                     # Check if note extends beyond measure boundary
+                    # Use expected_measure_length from time signature, not barDuration
+                    # which may have been auto-expanded by music21
                     element_end = element.offset + element.quarterLength
-                    measure_length = measure.barDuration.quarterLength
 
-                    if element_end > measure_length + 0.01:  # Tolerance for floating point
+                    if element_end > expected_measure_length + 0.01:  # Tolerance for floating point
                         # Note crosses boundary - add 'start' tie
                         element.tie = tie.Tie('start')
 
@@ -1401,7 +1415,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _snap_duration(self, duration):
+    def _snap_duration(self, duration) -> float:
         """
         Snap duration to nearest MusicXML-valid note value to avoid impossible tuplets.
 
@@ -1452,7 +1466,7 @@ class TranscriptionPipeline:
 
         return nearest
 
-    def _normalize_measure_durations(self, score, time_sig_numerator: int = 4, time_sig_denominator: int = 4):
+    def _normalize_measure_durations(self, score, time_sig_numerator: int = 4, time_sig_denominator: int = 4) -> stream.Score:
         """
         Normalize note durations to fit measures, using detected time signature.
 
@@ -1520,7 +1534,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _remove_impossible_durations(self, score):
+    def _remove_impossible_durations(self, score) -> stream.Score:
         """
         Remove notes/rests with durations too short for MusicXML export (<128th note).
 
@@ -1561,7 +1575,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _fix_tuplet_durations(self, score):
+    def _fix_tuplet_durations(self, score) -> stream.Score:
         """
         Simplify all durations to prevent music21 from creating impossible tuplets during export.
 
@@ -1623,7 +1637,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _validate_measures(self, score):
+    def _validate_measures(self, score) -> None:
         """
         Validate that all measures have correct durations matching their time signature.
 
@@ -1649,7 +1663,7 @@ class TranscriptionPipeline:
                     print(f"WARNING: Measure {measure_idx + 1} in part {part_idx} has duration {float(actual_duration):.2f} "
                           f"(expected {float(expected_duration):.2f} for {ts.ratioString} time)")
 
-    def _split_into_grand_staff(self, score):
+    def _split_into_grand_staff(self, score) -> stream.Score:
         """
         Split a measured score into treble and bass parts for piano grand staff.
 
@@ -1761,8 +1775,9 @@ class TranscriptionPipeline:
         # Let music21 add rests where needed and fix measure boundaries
         try:
             new_score.makeRests(inPlace=True, fillGaps=True)
-        except:
-            # If makeRests fails, continue anyway
+        except Exception as e:
+            # If makeRests fails, continue anyway (malformed measures may cause this)
+            print(f"WARNING: makeRests failed: {e}")
             pass
 
         return new_score
@@ -2182,7 +2197,7 @@ class TranscriptionPipeline:
 
         return detected_key, final_confidence
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Delete temporary files (except output)."""
         # Don't delete entire temp_dir yet - output file is still there
         # Delete individual temp files instead
@@ -2256,7 +2271,8 @@ def detect_key_signature(midi_path: Path) -> dict:
             'tonic': analyzed_key.tonic.name,
             'mode': analyzed_key.mode
         }
-    except:
+    except Exception as e:
+        print(f"WARNING: Key detection failed: {e}")
         return {'tonic': 'C', 'mode': 'major'}
 
 
