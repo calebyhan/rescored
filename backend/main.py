@@ -143,7 +143,9 @@ class ConnectionManager:
             for connection in self.active_connections[job_id]:
                 try:
                     await connection.send_json(message)
-                except:
+                except Exception as e:
+                    # WebSocket connection failed, mark for removal
+                    print(f"WebSocket error sending to connection: {e}")
                     dead_connections.append(connection)
 
             # Clean up dead connections
@@ -239,7 +241,8 @@ async def get_job_status(job_id: str):
     if 'error' in job_data:
         try:
             error = json.loads(job_data['error'])
-        except:
+        except json.JSONDecodeError:
+            # Error is not JSON, wrap as plain message
             error = {"message": job_data['error']}
 
     # Construct result URL if completed
@@ -387,7 +390,9 @@ async def health_check():
     try:
         redis_client.ping()
         redis_status = "healthy"
-    except:
+    except Exception as e:
+        # Catch all exceptions (Redis errors, connection failures, etc.)
+        print(f"Redis health check failed: {e}")
         redis_status = "unhealthy"
 
     return {

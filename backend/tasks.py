@@ -16,7 +16,7 @@ redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 class TranscriptionTask(Task):
     """Base task with progress tracking."""
 
-    def update_progress(self, job_id: str, progress: int, stage: str, message: str):
+    def update_progress(self, job_id: str, progress: int, stage: str, message: str) -> None:
         """
         Update job progress in Redis and publish to WebSocket subscribers.
 
@@ -155,11 +155,11 @@ def process_transcription_task(self, job_id: str):
             raise
 
 
-# === Module-level helper functions for backward compatibility ===
+# === Module-level helper functions ===
 
-def update_progress(job_id: str, progress: int, stage: str, message: str):
+def update_progress(job_id: str, progress: int, stage: str, message: str) -> None:
     """
-    Update job progress in Redis and publish to WebSocket subscribers.
+    Update job progress (wrapper for backward compatibility).
 
     Args:
         job_id: Job identifier
@@ -167,29 +167,12 @@ def update_progress(job_id: str, progress: int, stage: str, message: str):
         stage: Current stage name
         message: Status message
     """
-    job_key = f"job:{job_id}"
-
-    # Update Redis hash
-    redis_client.hset(job_key, mapping={
-        "progress": progress,
-        "current_stage": stage,
-        "status_message": message,
-        "updated_at": datetime.utcnow().isoformat(),
-    })
-
-    # Publish to pub/sub for WebSocket clients
-    update = {
-        "type": "progress",
-        "job_id": job_id,
-        "progress": progress,
-        "stage": stage,
-        "message": message,
-        "timestamp": datetime.utcnow().isoformat(),
-    }
-    redis_client.publish(f"job:{job_id}:updates", json.dumps(update))
+    # Instantiate task to use its update_progress method
+    task = TranscriptionTask()
+    task.update_progress(job_id, progress, stage, message)
 
 
-def cleanup_temp_files(job_id: str, storage_path: Path = None):
+def cleanup_temp_files(job_id: str, storage_path: Path = None) -> None:
     """
     Clean up temporary files for a job.
 

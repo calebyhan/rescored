@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     enable_tie_notation: bool = True
 
     # Phase 2: Zero-Tradeoff Solutions
+    # Python compatibility: madmom runtime patch enables Python 3.10+ support
     use_madmom_tempo_detection: bool = True  # Multi-scale tempo (eliminates octave errors)
     use_beat_synchronous_quantization: bool = True  # Beat-aligned quantization (eliminates double quantization)
     use_omnizart_transcription: bool = False  # Better onset/offset detection (requires model download)
@@ -65,6 +66,16 @@ class Settings(BaseSettings):
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs
     middle_c_split: int = 60  # MIDI note number for staff split (60 = Middle C)
+
+    # Polyphonic Detection Configuration
+    polyphonic_range_threshold: int = 24  # Semitone range threshold for polyphonic detection
+    note_merge_gap_ms: int = 150  # Max gap (ms) for merging consecutive notes of same pitch
+    onset_tolerance_ticks: int = 10  # MIDI ticks tolerance for grouping simultaneous notes
+
+    # MusicXML Generation Configuration
+    bucketing_resolution_qn: float = 0.005  # Quarter note resolution for deduplication bucketing
+    measure_duration_tolerance_qn: float = 0.15  # Tolerance for measure duration matching
+    minimum_note_duration_qn: float = 0.0625  # Minimum note duration (64th note)
 
     # CORS Configuration
     cors_origins: str = "http://localhost:5173,http://localhost:3000"

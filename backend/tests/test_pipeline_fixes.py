@@ -554,12 +554,12 @@ class TestMusicXMLTies:
         # Add 4/4 time signature
         part.append(meter.TimeSignature('4/4'))
 
-        # Measure 1: Two quarter notes + half note that extends into measure 2
+        # Measure 1: Two quarter notes + note that extends into measure 2
         m1 = stream.Measure()
         m1.append(note.Note('C4', quarterLength=1.0))
         m1.append(note.Note('D4', quarterLength=1.0))
-        # This note is 3 QN, exceeds measure (should be 2 QN max)
-        m1.append(note.Note('E4', quarterLength=3.0))
+        # This note is 2.5 QN, extends 0.5 QN beyond measure boundary
+        m1.append(note.Note('E4', quarterLength=2.5))
         part.append(m1)
 
         # Measure 2: Continuation
