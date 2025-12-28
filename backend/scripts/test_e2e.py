@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipeline import TranscriptionPipeline
-from config import settings
+from app_config import settings
 import time
 
 

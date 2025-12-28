@@ -6,7 +6,7 @@ import redis
 import json
 from datetime import datetime
 from pathlib import Path
-from config import settings
+from app_config import settings
 import shutil
 
 # Redis client
@@ -26,6 +26,7 @@ class TranscriptionTask(Task):
             stage: Current stage name
             message: Status message
         """
+        print(f"[PROGRESS] {progress}% - {stage} - {message}")
         job_key = f"job:{job_id}"
 
         # Update Redis hash
@@ -45,7 +46,8 @@ class TranscriptionTask(Task):
             "message": message,
             "timestamp": datetime.utcnow().isoformat(),
         }
-        redis_client.publish(f"job:{job_id}:updates", json.dumps(update))
+        num_subscribers = redis_client.publish(f"job:{job_id}:updates", json.dumps(update))
+        print(f"[PROGRESS] Published to {num_subscribers} subscribers")
 
 
 @celery_app.task(base=TranscriptionTask, bind=True)
@@ -109,8 +111,8 @@ def process_transcription_task(self, job_id: str):
         redis_client.hset(f"job:{job_id}", mapping={
             "status": "completed",
             "progress": 100,
-            "output_path": str(output_path),
-            "midi_path": str(midi_path) if temp_midi_path.exists() else "",
+            "output_path": str(output_path.absolute()),
+            "midi_path": str(midi_path.absolute()) if temp_midi_path.exists() else "",
             "completed_at": datetime.utcnow().isoformat(),
         })
 

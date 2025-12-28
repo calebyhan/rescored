@@ -4,7 +4,7 @@ from pathlib import Path
 import mido
 from music21 import note, chord, stream, converter
 from pipeline import TranscriptionPipeline
-from config import Settings
+from app_config import Settings
 
 
 @pytest.fixture

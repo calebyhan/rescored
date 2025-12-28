@@ -34,12 +34,6 @@ except ImportError as e:
     print(f"WARNING: madmom not available. Falling back to librosa for tempo/beat detection.")
     print(f"         Error: {e}")
 
-try:
-    import omnizart
-    OMNIZART_AVAILABLE = True
-except ImportError:
-    OMNIZART_AVAILABLE = False
-    print("WARNING: omnizart not installed. Install with: pip install omnizart")
 
 
 class TranscriptionPipeline:
@@ -55,7 +49,7 @@ class TranscriptionPipeline:
 
         # Load configuration
         if config is None:
-            from config import settings
+            from app_config import settings
             self.config = settings
         else:
             self.config = config
@@ -87,7 +81,13 @@ class TranscriptionPipeline:
             midi_path = self.transcribe_to_midi(stems['other'])
 
             self.progress(90, "musicxml", "Generating MusicXML")
-            musicxml_path = self.generate_musicxml(midi_path)
+            # Use minimal generator for YourMT3+, full generator for basic-pitch
+            if self.config.use_yourmt3_transcription:
+                print(f"   Using minimal MusicXML generation (YourMT3+)")
+                musicxml_path = self.generate_musicxml_minimal(midi_path, stems['other'])
+            else:
+                print(f"   Using full MusicXML generation (basic-pitch)")
+                musicxml_path = self.generate_musicxml(midi_path)
 
             self.progress(100, "complete", "Transcription complete")
             return musicxml_path
@@ -184,101 +184,161 @@ class TranscriptionPipeline:
             minimum_note_length = self.config.minimum_note_length
 
         output_dir = self.temp_dir
-        midi_path = output_dir / "piano.mid"
 
-        print(f"   Transcribing with basic-pitch (onset={onset_threshold}, frame={frame_threshold})...")
+        # === STEP 1: Try YourMT3+ first (primary transcriber) ===
+        use_yourmt3 = self.config.use_yourmt3_transcription
+        midi_path = None
 
-        # Run basic-pitch inference
-        # predict_and_save creates output files in the output directory
-        predict_and_save(
-            audio_path_list=[str(audio_path)],
-            output_directory=str(output_dir),
-            save_midi=True,
-            sonify_midi=False,  # Don't create audio
-            save_model_outputs=False,  # Don't save raw outputs
-            save_notes=False,  # Don't save CSV
-            model_or_model_path=ICASSP_2022_MODEL_PATH,
-            onset_threshold=onset_threshold,
-            frame_threshold=frame_threshold,
-            minimum_note_length=minimum_note_length,
-            minimum_frequency=self.config.minimum_frequency_hz,  # Filter low-frequency noise (F1)
-            maximum_frequency=self.config.maximum_frequency_hz,  # No upper limit
-            multiple_pitch_bends=False,
-            melodia_trick=True,  # Improves monophonic melody
-            debug_file=None
-        )
+        if use_yourmt3:
+            try:
+                print(f"   Transcribing with YourMT3+ (primary transcriber)...")
+                midi_path = self.transcribe_with_yourmt3(audio_path)
+                print(f"   ✓ YourMT3+ transcription complete")
+            except Exception as e:
+                import traceback
+                print(f"   ⚠ YourMT3+ failed: {e}")
+                print(f"   Full error: {traceback.format_exc()}")
+                print(f"   → Falling back to basic-pitch")
+                midi_path = None
 
-        # basic-pitch saves as {audio_stem}_basic_pitch.mid
-        generated_midi = output_dir / f"{audio_path.stem}_basic_pitch.mid"
+        # === STEP 2: Fallback to basic-pitch if YourMT3+ failed or disabled ===
+        if midi_path is None:
+            print(f"   Transcribing with basic-pitch (onset={onset_threshold}, frame={frame_threshold})...")
 
-        if not generated_midi.exists():
-            raise RuntimeError("basic-pitch did not create MIDI file")
-
-        # Rename to expected path
-        generated_midi.rename(midi_path)
-
-        # Detect tempo from source audio for accurate post-processing
-        source_audio = self.temp_dir / "audio.wav"
-        if source_audio.exists():
-            detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
-        else:
-            detected_tempo = 120.0  # Fallback
-
-        # Post-process MIDI (adaptive pipeline based on music type)
-        # 1. Detect if music is polyphonic (wide range) or monophonic (narrow range)
-        range_semitones = self._get_midi_range(midi_path)
-
-        if range_semitones > 24:
-            # Wide range (>2 octaves) = likely polyphonic piano music
-            # Preserve all notes (bass + treble)
-            print(f"   Detected wide range ({range_semitones} semitones), preserving all notes")
-            mono_midi = midi_path
-        else:
-            # Narrow range (≤2 octaves) = likely monophonic melody
-            # Remove octave duplicates using pitch class deduplication
-            print(f"   Narrow range ({range_semitones} semitones), removing octave duplicates")
-            mono_midi = self.extract_monophonic_melody(midi_path)
-
-        # 2. Clean (filter invalid notes, light quantization)
-        cleaned_midi = self.clean_midi(mono_midi, detected_tempo=detected_tempo)
-
-        # 2.3. PHASE 2: Beat-synchronous quantization (ZERO-TRADEOFF)
-        # If enabled and madmom available, quantize to detected beats instead of fixed grid
-        # This eliminates double quantization and ensures perfect musical alignment
-        if self.config.use_beat_synchronous_quantization and source_audio.exists():
-            beat_synced_midi = self.beat_synchronous_quantize(
-                cleaned_midi,
-                source_audio,
-                tempo_bpm=detected_tempo
+            # Run basic-pitch inference
+            # predict_and_save creates output files in the output directory
+            predict_and_save(
+                audio_path_list=[str(audio_path)],
+                output_directory=str(output_dir),
+                save_midi=True,
+                sonify_midi=False,  # Don't create audio
+                save_model_outputs=False,  # Don't save raw outputs
+                save_notes=False,  # Don't save CSV
+                model_or_model_path=ICASSP_2022_MODEL_PATH,
+                onset_threshold=onset_threshold,
+                frame_threshold=frame_threshold,
+                minimum_note_length=minimum_note_length,
+                minimum_frequency=self.config.minimum_frequency_hz,  # Filter low-frequency noise (F1)
+                maximum_frequency=self.config.maximum_frequency_hz,  # No upper limit
+                multiple_pitch_bends=False,
+                melodia_trick=True,  # Improves monophonic melody
+                debug_file=None
             )
+
+            # basic-pitch saves as {audio_stem}_basic_pitch.mid
+            generated_bp_midi = output_dir / f"{audio_path.stem}_basic_pitch.mid"
+
+            if not generated_bp_midi.exists():
+                raise RuntimeError("basic-pitch did not create MIDI file")
+
+            midi_path = generated_bp_midi
+            print(f"   ✓ basic-pitch transcription complete")
+
+        # Rename final MIDI to standard name for post-processing
+        final_midi_path = output_dir / "piano.mid"
+        if midi_path != final_midi_path:
+            midi_path.rename(final_midi_path)
+            midi_path = final_midi_path
+
+        # Conditional post-processing based on transcriber
+        if self.config.use_yourmt3_transcription:
+            # YourMT3+ produces clean MIDI - use as-is
+            print(f"   Using YourMT3+ output directly (no post-processing)")
+            return midi_path
         else:
-            beat_synced_midi = cleaned_midi
+            # basic-pitch needs full post-processing pipeline
+            print(f"   Applying full post-processing for basic-pitch")
 
-        # 2.5. CRITICAL FIX: Merge consecutive notes at MIDI level
-        # This fixes sustained notes appearing as "note → rest → note"
-        # The quantization creates gaps (125ms at 120 BPM for 16th grid, or from beat alignment)
-        # Merging with 150ms threshold catches these quantization artifacts
-        print(f"   Merging consecutive notes (gap threshold: 150ms)...")
-        merged_midi = self.merge_consecutive_notes(
-            beat_synced_midi,  # Use beat-synced MIDI if available
-            gap_threshold_ms=150,  # Generous to catch quantization gaps
-            tempo_bpm=detected_tempo
-        )
+            # Detect tempo from source audio for accurate post-processing
+            source_audio = self.temp_dir / "audio.wav"
+            if source_audio.exists():
+                detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
+            else:
+                detected_tempo = 120.0
 
-        # 2.6. Optional: Merge sustain artifacts using envelope analysis
-        if self.config.enable_envelope_analysis:
-            print(f"   Analyzing note envelopes for sustain artifacts...")
-            final_midi = self.analyze_note_envelope_and_merge_sustains(
-                merged_midi,
-                tempo_bpm=detected_tempo
+            # 1. Polyphony detection
+            range_semitones = self._get_midi_range(midi_path)
+            if range_semitones > 24:
+                # Wide range (>2 octaves) = likely polyphonic piano music
+                print(f"   Detected wide range ({range_semitones} semitones), preserving all notes")
+                mono_midi = midi_path
+            else:
+                # Narrow range (≤2 octaves) = likely monophonic melody
+                print(f"   Narrow range ({range_semitones} semitones), removing octave duplicates")
+                mono_midi = self.extract_monophonic_melody(midi_path)
+
+            # 2. Clean (filter, quantize)
+            cleaned_midi = self.clean_midi(mono_midi, detected_tempo)
+
+            # 3. Beat-synchronous quantization
+            if self.config.use_beat_synchronous_quantization and source_audio.exists():
+                beat_synced_midi = self.beat_synchronous_quantize(cleaned_midi, source_audio, detected_tempo)
+            else:
+                beat_synced_midi = cleaned_midi
+
+            # 4. Merge consecutive notes
+            print(f"   Merging consecutive notes (gap threshold: 150ms)...")
+            merged_midi = self.merge_consecutive_notes(beat_synced_midi, gap_threshold_ms=150, tempo_bpm=detected_tempo)
+
+            # 5. Envelope analysis
+            if self.config.enable_envelope_analysis:
+                print(f"   Analyzing note envelopes for sustain artifacts...")
+                final_midi = self.analyze_note_envelope_and_merge_sustains(merged_midi, tempo_bpm=detected_tempo)
+            else:
+                final_midi = merged_midi
+
+            # 6. Validate (pattern detection)
+            self.detect_repeated_note_patterns(final_midi)
+
+            return final_midi
+
+    def transcribe_with_yourmt3(self, audio_path: Path) -> Path:
+        """
+        Transcribe audio to MIDI using YourMT3+ directly (in-process).
+
+        YourMT3+ is a state-of-the-art multi-instrument transcription model
+        that achieves 80-85% accuracy (vs 70% for basic-pitch).
+
+        Args:
+            audio_path: Path to audio file (should be 'other' stem for piano)
+
+        Returns:
+            Path to generated MIDI file
+
+        Raises:
+            RuntimeError: If transcription fails
+        """
+        try:
+            from yourmt3_wrapper import YourMT3Transcriber
+        except ImportError:
+            # Try adding backend directory to path
+            import sys
+            from pathlib import Path as PathLib
+            backend_dir = PathLib(__file__).parent
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            from yourmt3_wrapper import YourMT3Transcriber
+
+        print(f"   Transcribing with YourMT3+ (direct call, device: {self.config.yourmt3_device})...")
+
+        try:
+            # Initialize transcriber (reuses loaded model from API if available)
+            transcriber = YourMT3Transcriber(
+                model_name="YPTF.MoE+Multi (noPS)",
+                device=self.config.yourmt3_device
             )
-        else:
-            final_midi = merged_midi
 
-        # 3. Detect repeated patterns (validation)
-        self.detect_repeated_note_patterns(final_midi)
+            # Transcribe audio
+            output_dir = self.temp_dir / "yourmt3_output"
+            output_dir.mkdir(exist_ok=True)
 
-        return final_midi
+            midi_path = transcriber.transcribe_audio(audio_path, output_dir)
+
+            print(f"   ✓ YourMT3+ transcription complete")
+            return midi_path
+
+        except Exception as e:
+            raise RuntimeError(f"YourMT3+ transcription failed: {e}")
 
     def _get_midi_range(self, midi_path: Path) -> int:
         """
@@ -626,10 +686,11 @@ class TranscriptionPipeline:
         mid = mido.MidiFile(midi_path)
 
         # 3. Convert beat times (seconds) to MIDI ticks
+        # Formula: seconds * (ticks_per_beat / seconds_per_beat)
         seconds_per_beat = 60.0 / tempo_bpm
         beat_ticks = []
         for beat_time in beats:
-            ticks = int(beat_time / seconds_per_beat * mid.ticks_per_beat)
+            ticks = int(beat_time * mid.ticks_per_beat / seconds_per_beat)
             beat_ticks.append(ticks)
 
         # 4. Quantize note onsets to nearest beat (preserve durations)
@@ -640,15 +701,22 @@ class TranscriptionPipeline:
 
             for msg in track:
                 abs_time += msg.time
+                # Skip pitchwheel messages (not needed for notation, can cause timing issues)
+                if msg.type == 'pitchwheel':
+                    continue
                 messages_with_abs_time.append((abs_time, msg))
 
             # Quantize note_on events to nearest beat
-            note_on_times = {}  # Track quantized onset times
+            note_on_times = {}  # Track quantized onset times: (channel, note) -> quantized_time
+            note_original_times = {}  # Track original onset times: (channel, note) -> original_time
 
             for i, (abs_time, msg) in enumerate(messages_with_abs_time):
                 if msg.type == 'note_on' and msg.velocity > 0:
                     # Find nearest beat
                     nearest_beat = min(beat_ticks, key=lambda b: abs(b - abs_time))
+
+                    # Store original time BEFORE quantization
+                    note_original_times[(msg.channel, msg.note)] = abs_time
 
                     # Update absolute time to nearest beat
                     messages_with_abs_time[i] = (nearest_beat, msg)
@@ -658,26 +726,43 @@ class TranscriptionPipeline:
 
                 elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
                     # Preserve duration by keeping offset relative to quantized onset
-                    if (msg.channel, msg.note) in note_on_times:
-                        onset_time = note_on_times[(msg.channel, msg.note)]
-                        original_duration = abs_time - [t for t, m in messages_with_abs_time
-                                                        if m.type == 'note_on' and m.note == msg.note
-                                                        and m.channel == msg.channel][-1]
+                    key = (msg.channel, msg.note)
+                    if key in note_on_times and key in note_original_times:
+                        onset_time = note_on_times[key]
+                        original_onset_time = note_original_times[key]
+
+                        # Calculate duration using original times
+                        original_duration = abs_time - original_onset_time
 
                         # Keep same duration from quantized onset
                         new_offset = onset_time + original_duration
                         messages_with_abs_time[i] = (new_offset, msg)
 
-                        del note_on_times[(msg.channel, msg.note)]
+                        del note_on_times[key]
+                        del note_original_times[key]
 
             # Rebuild track with new timings
             track.clear()
             previous_time = 0
+            last_note_time = 0
 
             for abs_time, msg in sorted(messages_with_abs_time, key=lambda x: x[0]):
+                # Skip end_of_track for now - we'll add it at the end
+                if msg.type == 'end_of_track':
+                    continue
+
                 msg.time = max(0, abs_time - previous_time)
                 previous_time = abs_time
                 track.append(msg)
+
+                # Track last note time
+                if msg.type in ('note_on', 'note_off'):
+                    last_note_time = abs_time
+
+            # Add end_of_track after last note with small delta
+            from mido import MetaMessage
+            end_msg = MetaMessage('end_of_track', time=10)
+            track.append(end_msg)
 
         # 5. Save beat-quantized MIDI
         beat_sync_path = midi_path.with_stem(f"{midi_path.stem}_beat_sync")
@@ -1143,6 +1228,108 @@ class TranscriptionPipeline:
                 # Different error, re-raise
                 raise
 
+        return output_path
+
+    def generate_musicxml_minimal(self, midi_path: Path, source_audio: Path) -> Path:
+        """
+        Generate MusicXML from clean MIDI (YourMT3+ output) with minimal post-processing.
+
+        This is a simplified pipeline for YourMT3+ which produces clean, well-quantized MIDI.
+        Skips all MIDI-level post-processing and only applies music21-level operations.
+
+        Steps:
+        1. Detect tempo, time signature, key from audio
+        2. Parse MIDI with music21
+        3. Create measures
+        4. Optional: Split into grand staff (treble + bass)
+        5. Export MusicXML
+
+        Args:
+            midi_path: Clean MIDI from YourMT3+ (no post-processing needed)
+            source_audio: Audio file for metadata detection
+
+        Returns:
+            Path to generated MusicXML file
+        """
+        from music21 import converter, tempo, meter, clef
+
+        self.progress(92, "musicxml", "Detecting metadata from audio")
+
+        # Step 1: Detect metadata from audio
+        if source_audio.exists():
+            # Detect tempo
+            detected_tempo, tempo_confidence = self.detect_tempo_from_audio(source_audio)
+            # Detect time signature
+            time_sig_num, time_sig_denom, ts_confidence = self.detect_time_signature(source_audio, detected_tempo)
+        else:
+            print("   WARNING: Audio file not found, using defaults")
+            detected_tempo, tempo_confidence = 120.0, 0.0
+            time_sig_num, time_sig_denom, ts_confidence = 4, 4, 0.0
+
+        print(f"   Detected: {detected_tempo} BPM (confidence: {tempo_confidence:.2f})")
+        print(f"   Detected: {time_sig_num}/{time_sig_denom} time (confidence: {ts_confidence:.2f})")
+
+        self.progress(93, "musicxml", "Parsing MIDI")
+
+        # Step 2: Parse MIDI
+        score = converter.parse(midi_path)
+
+        self.progress(94, "musicxml", "Detecting key signature")
+
+        # Step 3: Detect key signature
+        detected_key, key_confidence = self.detect_key_ensemble(score, source_audio)
+        print(f"   Detected key: {detected_key} (confidence: {key_confidence:.2f})")
+
+        self.progress(96, "musicxml", "Creating measures")
+
+        # Step 4: Create measures
+        score = score.makeMeasures()
+
+        # Step 5: Grand staff split (optional)
+        if self.config.enable_grand_staff:
+            print(f"   Splitting into grand staff (split at MIDI note {self.config.middle_c_split})...")
+            score = self._split_into_grand_staff(score)
+            print(f"   Created {len(score.parts)} staves (treble + bass)")
+
+            # Insert metadata into each part
+            for part in score.parts:
+                measures = part.getElementsByClass('Measure')
+                if measures:
+                    first_measure = measures[0]
+                    first_measure.insert(0, tempo.MetronomeMark(number=detected_tempo))
+                    first_measure.insert(0, detected_key)
+                    first_measure.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
+        else:
+            # Single staff: add treble clef and metadata
+            for part in score.parts:
+                part.insert(0, clef.TrebleClef())
+                part.insert(0, detected_key)
+                part.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
+                part.insert(0, tempo.MetronomeMark(number=detected_tempo))
+                part.partName = "Piano"
+
+        self.progress(97, "musicxml", "Normalizing durations")
+
+        # Step 5.5: Fix any impossible durations that music21 can't export
+        # YourMT3+ output is clean, but music21 has limitations on complex durations
+        score = self._remove_impossible_durations(score)
+
+        self.progress(98, "musicxml", "Exporting MusicXML")
+
+        # Step 6: Export MusicXML
+        output_path = self.temp_dir / f"{self.job_id}.musicxml"
+
+        print(f"   Writing MusicXML to {output_path}...")
+        try:
+            score.write('musicxml', fp=str(output_path), makeNotation=False)
+        except Exception as e:
+            # If export still fails due to complex durations, try with makeNotation=True
+            # This lets music21 handle the complex durations automatically
+            print(f"   WARNING: Export failed with makeNotation=False: {e}")
+            print(f"   Retrying with makeNotation=True (auto-notation)...")
+            score.write('musicxml', fp=str(output_path), makeNotation=True)
+
+        print(f"   ✓ MusicXML generation complete")
         return output_path
 
     def _deduplicate_overlapping_notes(self, score) -> stream.Score:
@@ -1829,20 +2016,22 @@ class TranscriptionPipeline:
         """
         print(f"   Using madmom multi-scale tempo detection (eliminates octave errors)...")
 
-        # Multi-scale tempo processor
+        # Process audio to get beat activations
+        act = madmom.features.beats.RNNBeatProcessor()(str(audio_path))
+
+        # Multi-scale tempo processor (operates on activations, not raw audio)
         tempo_processor = madmom.features.tempo.TempoEstimationProcessor(fps=100)
 
         # Get tempo candidates from multi-scale analysis
-        tempo_result = tempo_processor(str(audio_path))
+        tempo_result = tempo_processor(act)
 
-        # tempo_result is array of [tempo1, strength1, tempo2, strength2, ...]
-        # Extract top candidates
+        # tempo_result is 2D array where each row is [tempo_bpm, strength]
+        # Extract candidates
         tempos = []
         strengths = []
-        for i in range(0, len(tempo_result), 2):
-            if i + 1 < len(tempo_result):
-                tempos.append(float(tempo_result[i]))
-                strengths.append(float(tempo_result[i + 1]))
+        for row in tempo_result:
+            tempos.append(float(row[0]))  # tempo in BPM
+            strengths.append(float(row[1]))  # strength/confidence
 
         if not tempos:
             print(f"   WARNING: Madmom returned no tempo candidates, using default 120 BPM")
@@ -1939,21 +2128,20 @@ class TranscriptionPipeline:
             print(f"   WARNING: madmom not available, falling back to librosa beat tracking")
             return self._detect_beats_librosa(audio_path)
 
-        print(f"   Detecting beats and downbeats with madmom...")
+        print(f"   Detecting beats with madmom...")
 
-        # Beat tracking processor
+        # Process audio to get beat activations
+        beat_act = madmom.features.beats.RNNBeatProcessor()(str(audio_path))
+
+        # Beat tracking processor (operates on activations)
         beat_processor = madmom.features.beats.BeatTrackingProcessor(fps=100)
-        beats = beat_processor(str(audio_path))
+        beats = beat_processor(beat_act)
 
-        # Downbeat tracking processor
-        downbeat_processor = madmom.features.downbeats.DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], fps=100)
-        downbeats_result = downbeat_processor(str(audio_path))
+        # Estimate downbeats (every 4th beat for 4/4 time - simple heuristic)
+        # More sophisticated downbeat detection with madmom can be added later if needed
+        downbeats = beats[::4] if len(beats) > 0 else np.array([])
 
-        # downbeats_result is array of [time, beat_position]
-        # Extract only downbeats (beat_position == 1)
-        downbeats = downbeats_result[downbeats_result[:, 1] == 1, 0] if len(downbeats_result) > 0 else np.array([])
-
-        print(f"   Detected {len(beats)} beats, {len(downbeats)} downbeats")
+        print(f"   Detected {len(beats)} beats, {len(downbeats)} estimated downbeats")
 
         return beats, downbeats
 

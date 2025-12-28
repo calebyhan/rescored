@@ -1,6 +1,6 @@
 """Unit tests for utility functions."""
 import pytest
-from utils import validate_youtube_url, check_video_availability
+from app_utils import validate_youtube_url, check_video_availability
 from unittest.mock import patch, MagicMock
 import yt_dlp
 

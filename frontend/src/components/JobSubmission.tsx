@@ -1,8 +1,9 @@
 /**
  * Job submission form with progress tracking.
  */
-import { useState } from 'react';
-import { submitTranscription } from '../api/client';
+import { useState, useRef, useEffect } from 'react';
+import { api } from '../api/client';
+import type { ProgressUpdate } from '../api/client';
 import './JobSubmission.css';
 
 interface JobSubmissionProps {
@@ -12,8 +13,20 @@ interface JobSubmissionProps {
 
 export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'failed'>('idle');
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'processing' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
 
   const validateUrl = (value: string): string | null => {
     try {
@@ -38,13 +51,91 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
     setStatus('submitting');
 
     try {
-      const response = await submitTranscription(youtubeUrl, { instruments: ['piano'] });
+      const response = await api.submitJob(youtubeUrl, { instruments: ['piano'] });
       setYoutubeUrl('');
       if (onJobSubmitted) onJobSubmitted(response);
-      if (onComplete) onComplete(response.job_id);
 
-      // Reset to idle so the form stays usable after submissions in tests.
-      setStatus('idle');
+      // Switch to processing status and connect WebSocket
+      setStatus('processing');
+      setProgress(0);
+      setProgressMessage('Starting transcription...');
+
+      // Connect WebSocket for progress updates
+      wsRef.current = api.connectWebSocket(
+        response.job_id,
+        (update: ProgressUpdate) => {
+          if (update.type === 'progress') {
+            setProgress(update.progress || 0);
+            setProgressMessage(update.message || `Processing: ${update.stage}`);
+          } else if (update.type === 'completed') {
+            setProgress(100);
+            setProgressMessage('Transcription complete!');
+            if (wsRef.current) {
+              wsRef.current.close();
+              wsRef.current = null;
+            }
+            // Wait a moment to show completion, then switch to editor
+            setTimeout(() => {
+              if (onComplete) onComplete(response.job_id);
+              setStatus('idle');
+            }, 500);
+          } else if (update.type === 'error') {
+            setStatus('failed');
+            setError(update.error?.message || 'Transcription failed');
+            if (wsRef.current) {
+              wsRef.current.close();
+              wsRef.current = null;
+            }
+          }
+        },
+        (error) => {
+          console.error('WebSocket error:', error);
+          setStatus('failed');
+          setError('Connection error. Please try again.');
+        }
+      );
+
+      // Poll for progress updates as fallback (in case WebSocket misses early updates)
+      const pollInterval = setInterval(async () => {
+        try {
+          const jobStatus = await api.getJobStatus(response.job_id);
+          setProgress(jobStatus.progress);
+          setProgressMessage(jobStatus.status_message || 'Processing...');
+
+          if (jobStatus.status === 'completed') {
+            clearInterval(pollInterval);
+            setProgress(100);
+            setProgressMessage('Transcription complete!');
+            if (wsRef.current) {
+              wsRef.current.close();
+              wsRef.current = null;
+            }
+            setTimeout(() => {
+              if (onComplete) onComplete(response.job_id);
+              setStatus('idle');
+            }, 500);
+          } else if (jobStatus.status === 'failed') {
+            clearInterval(pollInterval);
+            setStatus('failed');
+            setError(jobStatus.error?.message || 'Transcription failed');
+            if (wsRef.current) {
+              wsRef.current.close();
+              wsRef.current = null;
+            }
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+        }
+      }, 1000); // Poll every second
+
+      // Store interval ID for cleanup
+      const currentInterval = pollInterval;
+      return () => {
+        clearInterval(currentInterval);
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      };
     } catch (err) {
       setStatus('failed');
       setError(err instanceof Error ? err.message : 'Failed to submit job');
@@ -66,7 +157,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
               type="text"
               value={youtubeUrl}
               onChange={(e) => setYoutubeUrl(e.target.value)}
-              placeholder="YouTube URL"
+              placeholder="https://www.youtube.com/watch?v=..."
               required
               onBlur={() => {
                 const validation = validateUrl(youtubeUrl);
@@ -78,6 +169,19 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
           {status === 'submitting' && <div>Submitting...</div>}
           {error && <div role="alert">{error}</div>}
         </form>
+      )}
+
+      {status === 'processing' && (
+        <div className="progress-container">
+          <h2>Transcribing...</h2>
+          <div className="progress-bar-container">
+            <div className="progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="progress-message">{progress}% - {progressMessage}</p>
+          <p className="progress-info">
+            This may take 1-2 minutes. Please don't close this window.
+          </p>
+        </div>
       )}
 
       {status === 'failed' && (

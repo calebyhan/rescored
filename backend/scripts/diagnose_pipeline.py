@@ -17,7 +17,7 @@ import mido
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import settings
+from app_config import settings
 
 
 def analyze_audio_file(audio_path: Path, label: str):

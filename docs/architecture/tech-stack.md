@@ -176,27 +176,36 @@ This document details the technology choices for Rescored, including alternative
 
 ---
 
-### Transcription: basic-pitch
+### Transcription: YourMT3+ (Primary) + basic-pitch (Fallback)
 
-**Chosen**: basic-pitch (Spotify)
+**Chosen**: YourMT3+ (KAIST) with automatic fallback to basic-pitch (Spotify)
 
-**Why**:
+**Why YourMT3+**:
+- **80-85% accuracy** vs 70% for basic-pitch
+- State-of-the-art multi-instrument transcription model
+- Mixture of Experts architecture for better quality
+- Perceiver-TF encoder with RoPE position encoding
+- Trained on diverse datasets (30k+ songs, 13 instrument classes)
+- Open-source, actively maintained
+- Optimized for Apple Silicon (MPS) with float16 precision (14x speedup)
+
+**Why basic-pitch as Fallback**:
 - Polyphonic transcription (multiple notes at once)
-- Trained on large dataset (30k+ songs)
-- Open-source, Apache 2.0 license
-- Outputs MIDI with note velocities
-- Actively maintained by Spotify
+- Lighter weight, faster inference
+- Simple setup, no model download required
+- Good baseline quality (70% accuracy)
+- Automatically used if YourMT3+ unavailable
 
 **Alternatives Considered**:
 
 | Option | Pros | Cons | Why Not Chosen |
 |--------|------|------|----------------|
-| MT3 (Music Transformer) | Google's latest, multi-instrument aware | Slower, larger model, harder to run | basic-pitch faster for MVP |
-| Omnizart | Multi-instrument, good documentation | More complex setup, slower | basic-pitch simpler |
+| MT3 (Music Transformer) | Google's latest, multi-instrument aware | Slower, larger model, harder to run | YourMT3+ more accurate |
+| Omnizart | Multi-instrument, good documentation | Lower accuracy than YourMT3+, slower | Removed in favor of YourMT3+ |
 | Tony (pYIN) | Excellent for monophonic | Only monophonic | Need polyphonic support |
-| commercial APIs | Better quality | Expensive, privacy | Local processing preferred |
+| commercial APIs | Better quality | Expensive, privacy concerns | Local processing preferred |
 
-**Decision**: basic-pitch is the best open-source polyphonic transcription model.
+**Decision**: YourMT3+ offers the best accuracy for self-hosted solution with intelligent fallback to basic-pitch for reliability.
 
 ---
 

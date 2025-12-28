@@ -1,7 +1,7 @@
 """Celery application configuration."""
 from celery import Celery
 from kombu import Exchange, Queue
-from config import settings
+from app_config import settings
 
 # Initialize Celery
 celery_app = Celery(

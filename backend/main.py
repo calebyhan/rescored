@@ -1,5 +1,5 @@
 """FastAPI application for Rescored backend."""
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, HttpUrl
@@ -11,9 +11,20 @@ from starlette.responses import JSONResponse
 import redis
 import json
 import asyncio
-from config import settings
-from utils import validate_youtube_url, check_video_availability
+import tempfile
+import shutil
+from typing import Optional
+from app_config import settings
+from app_utils import validate_youtube_url, check_video_availability
 from tasks import process_transcription_task
+
+# YourMT3+ transcription service
+try:
+    from yourmt3_wrapper import YourMT3Transcriber
+    YOURMT3_AVAILABLE = True
+except ImportError as e:
+    YOURMT3_AVAILABLE = False
+    print(f"WARNING: YourMT3+ not available: {e}")
 
 # Initialize FastAPI
 app = FastAPI(
@@ -24,6 +35,10 @@ app = FastAPI(
 
 # Redis client (initialized before middleware)
 redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+
+# YourMT3+ transcriber (loaded on startup)
+yourmt3_transcriber: Optional[YourMT3Transcriber] = None
+YOURMT3_TEMP_DIR = Path(tempfile.gettempdir()) / "yourmt3_service"
 
 
 # === Rate Limiting Middleware ===
@@ -79,6 +94,38 @@ app.add_middleware(
 
 # Rate limiting middleware
 app.add_middleware(RateLimitMiddleware)
+
+
+# === Application Lifecycle Events ===
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize YourMT3+ model on startup."""
+    global yourmt3_transcriber
+
+    if not YOURMT3_AVAILABLE or not settings.use_yourmt3_transcription:
+        print("YourMT3+ transcription disabled or unavailable")
+        return
+
+    try:
+        YOURMT3_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"Loading YourMT3+ model (device: {settings.yourmt3_device})...")
+        yourmt3_transcriber = YourMT3Transcriber(
+            model_name="YPTF.MoE+Multi (noPS)",
+            device=settings.yourmt3_device
+        )
+        print("✓ YourMT3+ model loaded successfully")
+    except Exception as e:
+        print(f"⚠ Failed to load YourMT3+ model: {e}")
+        print("  Service will fall back to basic-pitch for transcription")
+        yourmt3_transcriber = None
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up temporary files on shutdown."""
+    if YOURMT3_TEMP_DIR.exists():
+        shutil.rmtree(YOURMT3_TEMP_DIR, ignore_errors=True)
 
 
 # === Request/Response Models ===
@@ -399,6 +446,85 @@ async def health_check():
         "status": "healthy" if redis_status == "healthy" else "degraded",
         "redis": redis_status,
         "storage": str(settings.storage_path)
+    }
+
+
+# === YourMT3+ Transcription Endpoints ===
+
+@app.get("/api/v1/yourmt3/health")
+async def yourmt3_health():
+    """
+    Check YourMT3+ transcription service health.
+
+    Returns model status, device, and availability.
+    """
+    if not YOURMT3_AVAILABLE:
+        return {
+            "status": "unavailable",
+            "model_loaded": False,
+            "reason": "YourMT3+ dependencies not installed"
+        }
+
+    model_loaded = yourmt3_transcriber is not None
+
+    return {
+        "status": "healthy" if model_loaded else "degraded",
+        "model_loaded": model_loaded,
+        "model_name": "YPTF.MoE+Multi (noPS)" if model_loaded else "not loaded",
+        "device": yourmt3_transcriber.device if model_loaded else "unknown"
+    }
+
+
+@app.post("/api/v1/yourmt3/transcribe")
+async def yourmt3_transcribe(file: UploadFile = File(...)):
+    """
+    Transcribe audio file to MIDI using YourMT3+.
+
+    This endpoint is used by the pipeline for direct transcription.
+    """
+    if yourmt3_transcriber is None:
+        raise HTTPException(status_code=503, detail="YourMT3+ model not loaded")
+
+    # Save uploaded file
+    input_file = YOURMT3_TEMP_DIR / f"input_{uuid4().hex}_{file.filename}"
+    try:
+        with open(input_file, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Transcribe
+        output_dir = YOURMT3_TEMP_DIR / f"output_{uuid4().hex}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        midi_path = yourmt3_transcriber.transcribe_audio(input_file, output_dir)
+
+        # Return MIDI file
+        return FileResponse(
+            path=str(midi_path),
+            media_type="audio/midi",
+            filename=midi_path.name
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    finally:
+        # Clean up input file
+        if input_file.exists():
+            input_file.unlink()
+
+
+@app.get("/api/v1/yourmt3/models")
+async def yourmt3_models():
+    """List available YourMT3+ model variants."""
+    return {
+        "models": [
+            {
+                "name": "YPTF.MoE+Multi (noPS)",
+                "description": "Mixture of Experts multi-instrument transcription (default)",
+                "loaded": yourmt3_transcriber is not None
+            }
+        ],
+        "default": "YPTF.MoE+Multi (noPS)"
     }
 
 

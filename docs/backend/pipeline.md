@@ -31,12 +31,15 @@ graph TB
     end
 
     subgraph Stage3["Stage 3: Transcription (50-90%)"]
-        ForEach["For Each<br/>Stem"]
-        BasicPitch["basic-pitch<br/>Inference"]
+        Health["Check<br/>YourMT3+<br/>Health"]
+        YMT3["YourMT3+<br/>Inference<br/>(Primary)"]
+        BasicPitch["basic-pitch<br/>Inference<br/>(Fallback)"]
         Quantize["Quantize<br/>& Clean<br/>MIDI"]
-        MIDI["drums.mid, bass.mid,<br/>vocals.mid, other.mid"]
+        MIDI["piano.mid"]
 
-        ForEach --> BasicPitch
+        Health -->|Healthy| YMT3
+        Health -->|Unavailable| BasicPitch
+        YMT3 --> Quantize
         BasicPitch --> Quantize
         Quantize --> MIDI
     end
@@ -298,82 +301,129 @@ class DemucsProcessor:
 
 ## Stage 3: Transcription (Audio → MIDI)
 
-### 3.1 basic-pitch Inference
+**Current System**: YourMT3+ (Primary) with automatic fallback to basic-pitch
 
-**Purpose**: Convert each audio stem to MIDI notes (pitch, timing, duration).
+### 3.1 YourMT3+ Inference (Primary, 80-85% Accuracy)
 
-**Why Per-Stem Transcription?**
-- Isolated instruments are easier for the model to detect
-- Reduces polyphonic complexity (fewer simultaneous notes)
-- Better note onset detection
+**Purpose**: Convert audio stem to high-quality MIDI notes using state-of-the-art model.
+
+**Why YourMT3+?**
+- **80-85% note accuracy** (vs 70% for basic-pitch)
+- Multi-instrument awareness (13 instrument classes)
+- Better rhythm and onset detection
+- Mixture of Experts architecture for quality
+- Perceiver-TF encoder with RoPE position encoding
+
+**Health Check Flow**:
+1. Check YourMT3+ service health at `/api/v1/yourmt3/health`
+2. If healthy and model loaded → Use YourMT3+
+3. If unavailable/unhealthy → Automatic fallback to basic-pitch
 
 **Implementation**:
 
 ```python
-from basic_pitch.inference import predict
-from basic_pitch import ICASSP_2022_MODEL_PATH
-import numpy as np
+import requests
 from pathlib import Path
-from mido import MidiFile, MidiTrack, Message
 
-class BasicPitchTranscriber:
-    def __init__(self):
-        # Model is auto-loaded by basic-pitch
-        pass
+class TranscriptionPipeline:
+    def __init__(self, job_id, youtube_url, storage_path, config):
+        self.config = config  # Has use_yourmt3_transcription flag
+        self.service_url = config.transcription_service_url  # http://localhost:8000
 
-    def transcribe_stem(self, audio_path: Path, output_path: Path) -> Path:
+    def transcribe_to_midi(self, audio_path: Path) -> Path:
         """
-        Transcribe audio to MIDI using basic-pitch.
+        Transcribe audio to MIDI using YourMT3+ with automatic fallback.
 
         Returns:
             Path to output MIDI file
         """
-        # Run inference
-        model_output, midi_data, note_events = predict(
-            audio_path=str(audio_path),
-            model_or_model_path=ICASSP_2022_MODEL_PATH,
-            onset_threshold=0.5,      # Note onset confidence threshold
-            frame_threshold=0.3,      # Frame activation threshold
-            minimum_note_length=127,  # ~58ms at 44.1kHz (filter very short notes)
-            minimum_frequency=None,   # No frequency limits
-            maximum_frequency=None,
-            multiple_pitch_bends=False,  # Simpler MIDI output
-            melodia_trick=True,       # Improves melody extraction
+        midi_path = None
+
+        # Try YourMT3+ first (if enabled)
+        if self.config.use_yourmt3_transcription:
+            try:
+                print("Transcribing with YourMT3+ (primary)...")
+                midi_path = self.transcribe_with_yourmt3(audio_path)
+                print("✓ YourMT3+ transcription complete")
+            except Exception as e:
+                print(f"⚠ YourMT3+ failed: {e}")
+                print("→ Falling back to basic-pitch")
+                midi_path = None
+
+        # Fallback to basic-pitch if YourMT3+ failed or disabled
+        if midi_path is None:
+            print("Transcribing with basic-pitch (fallback)...")
+            midi_path = self.transcribe_with_basic_pitch(audio_path)
+            print("✓ basic-pitch transcription complete")
+
+        return midi_path
+
+    def transcribe_with_yourmt3(self, audio_path: Path) -> Path:
+        """Call YourMT3+ service via HTTP."""
+        # Health check
+        health_response = requests.get(
+            f"{self.service_url}/api/v1/yourmt3/health",
+            timeout=5
         )
+        health_data = health_response.json()
+
+        if not health_data.get("model_loaded"):
+            raise RuntimeError("YourMT3+ model not loaded")
+
+        # Transcribe
+        with open(audio_path, 'rb') as f:
+            files = {'file': (audio_path.name, f, 'audio/wav')}
+            response = requests.post(
+                f"{self.service_url}/api/v1/yourmt3/transcribe",
+                files=files,
+                timeout=self.config.transcription_service_timeout
+            )
 
         # Save MIDI
-        midi_data.write(str(output_path))
+        midi_path = self.temp_dir / "piano_yourmt3.mid"
+        with open(midi_path, 'wb') as f:
+            f.write(response.content)
 
-        # Post-process MIDI (quantization, cleanup)
-        cleaned_midi = self.clean_midi(output_path)
+        return midi_path
 
-        return cleaned_midi
+    def transcribe_with_basic_pitch(self, audio_path: Path) -> Path:
+        """Fallback transcription using basic-pitch."""
+        from basic_pitch.inference import predict_and_save
+        from basic_pitch import ICASSP_2022_MODEL_PATH
 
-    def clean_midi(self, midi_path: Path) -> Path:
-        """
-        Quantize notes to nearest 16th note, remove duplicates.
-        """
-        mid = MidiFile(midi_path)
+        predict_and_save(
+            audio_path_list=[str(audio_path)],
+            output_directory=str(self.temp_dir),
+            save_midi=True,
+            model_or_model_path=ICASSP_2022_MODEL_PATH,
+            onset_threshold=0.3,
+            frame_threshold=0.3,
+        )
 
-        # Quantize to 16th note grid (480 ticks per quarter note)
-        ticks_per_16th = mid.ticks_per_beat // 4
-
-        for track in mid.tracks:
-            time = 0
-            for msg in track:
-                time += msg.time
-                if msg.type in ['note_on', 'note_off']:
-                    # Quantize timing to nearest 16th
-                    quantized_time = round(time / ticks_per_16th) * ticks_per_16th
-                    msg.time = quantized_time - time
-                    time = quantized_time
-
-        # Save cleaned MIDI
-        cleaned_path = midi_path.with_stem(f"{midi_path.stem}_clean")
-        mid.save(cleaned_path)
-
-        return cleaned_path
+        generated_midi = self.temp_dir / f"{audio_path.stem}_basic_pitch.mid"
+        return generated_midi
 ```
+
+**YourMT3+ Features**:
+- Integrated into main backend (port 8000)
+- Model loaded on startup (reduces per-request latency)
+- Float16 precision for MPS (14x speedup on Apple Silicon)
+- ~30-40s processing time for 3.5min audio
+- Automatic health monitoring
+
+---
+
+### 3.2 basic-pitch Inference (Fallback, 70% Accuracy)
+
+**Purpose**: Lightweight fallback transcription when YourMT3+ unavailable.
+
+**When Used**:
+- YourMT3+ service health check fails
+- YourMT3+ model not loaded
+- YourMT3+ request times out
+- `use_yourmt3_transcription=False` in config
+
+**Implementation**: See `transcribe_with_basic_pitch()` above
 
 **Parameters** (Tempo-Adaptive):
 - **onset_threshold**: Note onset confidence threshold
@@ -387,9 +437,11 @@ class BasicPitchTranscriber:
   - Slow: More permissive for soft dynamics
 - **melodia_trick** (True): Improves monophonic melody detection
 
-**Post-Processing Pipeline**:
+---
 
-After basic-pitch generates raw MIDI, several post-processing steps clean up common artifacts:
+### 3.3 Post-Processing Pipeline
+
+After either YourMT3+ or basic-pitch generates raw MIDI, several post-processing steps clean up common artifacts:
 
 1. **clean_midi()** - Filters and quantizes notes
    - Removes notes outside piano range (A0-C8)
@@ -399,7 +451,7 @@ After basic-pitch generates raw MIDI, several post-processing steps clean up com
 
 2. **merge_consecutive_notes()** - Fixes choppy sustained phrases
    - Merges notes of same pitch with small gaps (<150ms default)
-   - Addresses basic-pitch's tendency to split sustained notes
+   - Addresses transcription models' tendency to split sustained notes
 
 3. **analyze_note_envelope_and_merge_sustains()** - **NEW: Removes ghost notes**
    - Detects false onsets from sustained note decay

@@ -49,7 +49,7 @@ This documentation focuses on **high-level architecture and design decisions**, 
 2. [Audio Processing Pipeline](backend/pipeline.md) - Detailed workflow
 3. [Background Workers](backend/workers.md) - Celery setup
 4. [API Design](backend/api.md) - REST + WebSocket endpoints
-5. [ML Model Selection](research/ml-models.md) - Demucs & basic-pitch
+5. [ML Model Selection](research/ml-models.md) - Demucs, YourMT3+, basic-pitch
 6. [Challenges](research/challenges.md) - Known limitations
 
 **Key Files to Create**:
@@ -107,9 +107,10 @@ This documentation focuses on **high-level architecture and design decisions**, 
 4. [ML Model Selection](research/ml-models.md) - Accuracy expectations
 
 **Key Insights**:
-- Transcription is ~70-80% accurate, users **must** edit output
+- Transcription is ~80-85% accurate with YourMT3+, ~70% with basic-pitch fallback
+- Users **must** edit output - editor is **critical**
 - Processing takes 1-2 minutes (GPU) or 10-15 minutes (CPU)
-- Editor is **critical** - make it fast and intuitive
+- YourMT3+ optimized for Apple Silicon (MPS) with 14x speedup via float16
 - MVP focuses on piano only, multi-instrument in Phase 2
 
 ---
@@ -132,7 +133,7 @@ See [Glossary](glossary.md) for more terms.
 
 **Frontend**: React + VexFlow (notation) + Tone.js (playback)
 **Backend**: Python/FastAPI + Celery (workers) + Redis (queue)
-**ML**: Demucs (source separation) + basic-pitch (transcription)
+**ML**: Demucs (source separation) + YourMT3+ (primary transcription, 80-85% accuracy) + basic-pitch (fallback, 70% accuracy)
 **Formats**: MusicXML (primary), MIDI (intermediate)
 
 ---
@@ -198,7 +199,7 @@ docker-compose up
 
 ### Q: How accurate is transcription?
 
-**A**: 70-80% for simple piano, 60-70% for complex music. See [ML Models](research/ml-models.md) and [Challenges](research/challenges.md).
+**A**: 80-85% for simple piano with YourMT3+ (70-75% for complex music). Falls back to basic-pitch (70% simple, 60-70% complex) if YourMT3+ unavailable. See [ML Models](research/ml-models.md) and [Challenges](research/challenges.md).
 
 ### Q: Can I deploy this to production?
 

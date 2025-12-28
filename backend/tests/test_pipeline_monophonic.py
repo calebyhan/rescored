@@ -3,7 +3,7 @@ import pytest
 import mido
 from pathlib import Path
 from pipeline import TranscriptionPipeline
-from config import Settings
+from app_config import Settings
 
 
 @pytest.fixture

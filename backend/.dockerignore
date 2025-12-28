@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Storage and temp files
+storage/
+*.wav
+*.mid
+*.musicxml
+*.tmp
+*.temp
+
+# YourMT3+ large files (4.5GB model repo - too large for Docker image)
+ymt/yourmt3_core/model_repo/
+ymt/yourmt3_core/.git/
+ymt/model_output/
+ymt/*.mid
+ymt/*.log
+
+# Environment files
+.env
+.env.local
+.env.production

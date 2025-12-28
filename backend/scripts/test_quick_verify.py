@@ -113,7 +113,7 @@ def main():
             print(f"  - {r['video_id']:20s} | {error_preview}")
 
     # Save results
-    from config import settings
+    from app_config import settings
     output_path = Path(settings.storage_path) / "quick_verify_results.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

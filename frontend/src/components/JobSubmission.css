@@ -43,21 +43,42 @@ button:hover {
 
 .progress-container {
   text-align: center;
+  padding: 2rem;
 }
 
-.progress-bar {
+.progress-container h2 {
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.progress-bar-container {
   width: 100%;
   height: 30px;
   background-color: #f0f0f0;
   border-radius: 15px;
   overflow: hidden;
-  margin: 1rem 0;
+  margin: 1.5rem 0;
+  border: 1px solid #ddd;
 }
 
-.progress-fill {
+.progress-bar {
   height: 100%;
-  background-color: #28a745;
+  background: linear-gradient(90deg, #007bff, #0056b3);
   transition: width 0.3s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-message {
+  color: #555;
+  font-size: 1rem;
+  margin: 0.5rem 0;
+  font-weight: 500;
+}
+
+.progress-info {
+  color: #888;
+  font-size: 0.9rem;
+  margin-top: 1rem;
 }
 
 .progress-text {
