@@ -21,9 +21,9 @@ echo "GPU: $CUDA_VISIBLE_DEVICES"
 echo "========================================"
 
 # Configuration
-MAESTRO_DIR=${1:-"../../data/maestro-v3.0.0"}  # Path to MAESTRO dataset
+MAESTRO_DIR=${1:-"../../data/maestro-v3.0.0"}  # Path to MAESTRO dataset (relative to backend/)
 MODEL=${2:-"yourmt3"}                        # Model to benchmark (yourmt3, bytedance, ensemble)
-REPO_DIR=${3:-"rescored"}                    # Path to git repo
+REPO_DIR=${3:-".."}                          # Path to git repo (relative to backend/)
 
 # Verify MAESTRO dataset exists
 if [ ! -d "$MAESTRO_DIR" ]; then
