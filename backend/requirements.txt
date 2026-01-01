@@ -44,6 +44,12 @@ tenacity==9.0.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 numpy<2.0.0
+filelock  # Required by huggingface-hub and transformers
+pyyaml>=5.1  # Required by huggingface-hub and transformers
+requests>=2.21.0  # Required by tensorflow and transformers
+tqdm>=4.42.1  # Required by huggingface-hub and transformers
+six>=1.12.0  # Required by tensorflow and tensorboard
+wrapt>=1.11.0  # Required by tensorflow
 
 # WebSocket
 websockets==14.1

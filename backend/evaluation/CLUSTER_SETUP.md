@@ -68,6 +68,14 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install --upgrade pip
+
+# Install Cython first (required by madmom)
+pip install Cython
+
+# Install madmom separately to avoid build isolation issues
+pip install --no-build-isolation madmom>=0.16.1
+
+# Install remaining dependencies
 pip install -r requirements.txt
 ```
 
