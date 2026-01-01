@@ -1,0 +1,18 @@
+[
+  {
+    "test_case": "MAESTRO_2004_AUDIO 02 R1 2004 05 Track05 wav",
+    "genre": "classical",
+    "difficulty": "easy",
+    "f1_score": 0.9831072434092655,
+    "precision": 0.9932764416860616,
+    "recall": 0.9731441601216113,
+    "onset_mae": 0.005870731363360242,
+    "pitch_accuracy": 1.0,
+    "true_positives": 7682,
+    "false_positives": 52,
+    "false_negatives": 212,
+    "processing_time": 114.05283236503601,
+    "success": true,
+    "error": null
+  }
+]
