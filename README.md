@@ -343,10 +343,6 @@ Once the backend is running, visit:
 - Make sure you're in the virtual environment: `source backend/.venv/bin/activate`
 - Reinstall requirements: `pip install -r requirements.txt`
 
-## Contributing
-
-See [CLAUDE.md](CLAUDE.md) for development guidelines.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
