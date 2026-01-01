@@ -20,6 +20,8 @@ sys.path.insert(0, str(_base_dir / "ymt" / "yourmt3_core" / "amt" / "src"))  # F
 
 import torch
 import torchaudio
+import soundfile as sf
+import numpy as np
 
 class YourMT3Transcriber:
     """
@@ -161,9 +163,20 @@ class YourMT3Transcriber:
         print(f"Transcribing: {audio_path}")
 
         try:
-            # Set torchaudio backend to soundfile (more portable than torchcodec)
-            # This avoids torchcodec dependency issues on clusters without FFmpeg libraries
-            torchaudio.set_audio_backend("soundfile")
+            # Monkey-patch torchaudio.load to use soundfile instead of torchcodec
+            # PyTorch 2.9+ hardcodes torchcodec which requires FFmpeg libraries
+            # This workaround uses soundfile which is more portable
+            original_load = torchaudio.load
+
+            def soundfile_load(uri, **kwargs):
+                """Load audio using soundfile instead of torchcodec."""
+                audio_data, sample_rate = sf.read(uri, dtype='float32')
+                # Convert to torch tensor and ensure (channels, samples) shape
+                audio_tensor = torch.from_numpy(audio_data.T if audio_data.ndim > 1 else audio_data.reshape(1, -1))
+                return audio_tensor, sample_rate
+
+            # Replace torchaudio.load with our soundfile version
+            torchaudio.load = soundfile_load
 
             # Import transcribe function
             from model_helper import transcribe
@@ -174,18 +187,23 @@ class YourMT3Transcriber:
                 'track_name': audio_path.stem
             }
 
-            # Run transcription
-            midi_path = transcribe(self.model, audio_info)
-            midi_path = Path(midi_path)
+            try:
+                # Run transcription
+                midi_path = transcribe(self.model, audio_info)
+                midi_path = Path(midi_path)
 
-            # Move to output directory if needed
-            if midi_path.parent != output_dir:
-                final_path = output_dir / midi_path.name
-                midi_path.rename(final_path)
-                midi_path = final_path
+                # Move to output directory if needed
+                if midi_path.parent != output_dir:
+                    final_path = output_dir / midi_path.name
+                    midi_path.rename(final_path)
+                    midi_path = final_path
 
-            print(f"Transcription complete: {midi_path}")
-            return midi_path
+                print(f"Transcription complete: {midi_path}")
+                return midi_path
+
+            finally:
+                # Restore original torchaudio.load
+                torchaudio.load = original_load
 
         except Exception as e:
             raise RuntimeError(f"Transcription failed: {e}")
