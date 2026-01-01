@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=rescored_benchmark
-#SBATCH --output=logs/slurm/benchmark_%j.log
-#SBATCH --error=logs/slurm/benchmark_%j.err
+#SBATCH --output=../../logs/slurm/benchmark_%j.log
+#SBATCH --error=../../logs/slurm/benchmark_%j.err
 #SBATCH --time=0-12:00:00              # 12 hours for 8-10 test cases
 #SBATCH --partition=l40-gpu            # Use l40-gpu partition
 #SBATCH --qos=gpu_access               # Required for l40-gpu partition
@@ -21,7 +21,7 @@ echo "GPU: $CUDA_VISIBLE_DEVICES"
 echo "========================================"
 
 # Configuration
-MAESTRO_DIR=${1:-"../data/maestro-v3.0.0"}  # Path to MAESTRO dataset
+MAESTRO_DIR=${1:-"../../data/maestro-v3.0.0"}  # Path to MAESTRO dataset
 MODEL=${2:-"yourmt3"}                        # Model to benchmark (yourmt3, bytedance, ensemble)
 REPO_DIR=${3:-"rescored"}                    # Path to git repo
 
@@ -32,13 +32,14 @@ if [ ! -d "$MAESTRO_DIR" ]; then
     echo "Please download MAESTRO v3.0.0 from:"
     echo "  https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0.zip"
     echo ""
-    echo "Extract to: ../data/maestro-v3.0.0/"
+    echo "Extract to: ../../data/maestro-v3.0.0/"
     echo ""
     echo "Directory structure should be:"
     echo "  rescored/"
     echo "  ├── data/"
     echo "  │   └── maestro-v3.0.0/  <- MAESTRO dataset here"
     echo "  └── rescored/             <- Git repo here"
+    echo "      └── backend/          <- Script runs from here"
     exit 1
 fi
 
@@ -63,16 +64,25 @@ mkdir -p logs/slurm
 mkdir -p evaluation/results
 
 # Activate virtual environment
+module load anaconda/2024.02
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
-    python3.10 -m venv .venv
+    conda create -n .venv python=3.10
 fi
 
-source .venv/bin/activate
+source activate .venv
 
 # Install dependencies
 echo "Installing dependencies..."
 pip install -q --upgrade pip
+
+# Install Cython first (required by madmom)
+pip install -q Cython
+
+# Install madmom separately to avoid build isolation issues
+pip install -q --no-build-isolation madmom>=0.16.1
+
+# Install remaining dependencies
 pip install -q -r requirements.txt
 
 # Display GPU info
