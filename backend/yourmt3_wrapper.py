@@ -116,13 +116,18 @@ class YourMT3Transcriber:
 
         # Pre-create the logs directory that YourMT3 expects (relative to amt/src)
         logs_dir = amt_src_dir / "amt" / "logs"
-        try:
+
+        # Handle symlinks: resolve to actual directory and create if needed
+        if logs_dir.is_symlink():
+            # Follow symlink to actual target
+            actual_logs_dir = logs_dir.resolve()
+            actual_logs_dir.mkdir(parents=True, exist_ok=True)
+        elif logs_dir.exists() and not logs_dir.is_dir():
+            # Path exists but is a file (not directory or symlink)
+            raise RuntimeError(f"{logs_dir} exists but is not a directory or symlink")
+        else:
+            # Regular directory creation
             logs_dir.mkdir(parents=True, exist_ok=True)
-        except FileExistsError:
-            # Directory already exists (possibly from concurrent process)
-            if not logs_dir.is_dir():
-                raise RuntimeError(f"{logs_dir} exists but is not a directory")
-            # Otherwise, it's fine - directory exists and we can use it
 
         try:
             os.chdir(str(amt_src_dir))
