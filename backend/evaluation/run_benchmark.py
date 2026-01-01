@@ -61,15 +61,15 @@ def transcribe_with_yourmt3(audio_path: Path, output_dir: Path) -> Path:
 
         # Run source separation
         print(f"   Running Demucs separation...")
-        separated_audio_dir = pipeline.separate_audio(temp_audio)
-        piano_stem = separated_audio_dir / "other.wav"
+        separated_stems = pipeline.separate_sources(temp_audio)
+        piano_stem_path = separated_stems.get("other")
 
-        if not piano_stem.exists():
-            raise FileNotFoundError(f"Source separation failed: {piano_stem}")
+        if not piano_stem_path or not Path(piano_stem_path).exists():
+            raise FileNotFoundError(f"Source separation failed: piano stem not found")
 
-        # Run transcription
+        # Run transcription (use the transcribe_with_yourmt3 method)
         print(f"   Running YourMT3+ transcription...")
-        midi_path = pipeline.transcribe_to_midi(piano_stem)
+        midi_path = pipeline.transcribe_with_yourmt3(Path(piano_stem_path))
 
         if not midi_path or not midi_path.exists():
             raise FileNotFoundError(f"Transcription failed: no MIDI output")
