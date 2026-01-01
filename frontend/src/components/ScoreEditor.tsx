@@ -2,7 +2,7 @@
  * Main score editor component integrating notation, playback, and export.
  */
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
+import { getMidiFile, getMetadata } from '../api/client';
 import { useNotationStore } from '../store/notation';
 import { NotationCanvas } from './NotationCanvas';
 import { PlaybackControls } from './PlaybackControls';
@@ -13,9 +13,9 @@ interface ScoreEditorProps {
 }
 
 export function ScoreEditor({ jobId }: ScoreEditorProps) {
-  const [musicXML, setMusicXML] = useState('');
   const [loading, setLoading] = useState(true);
-  const loadFromMusicXML = useNotationStore((state) => state.loadFromMusicXML);
+  const [error, setError] = useState<string | null>(null);
+  const loadFromMidi = useNotationStore((state) => state.loadFromMidi);
 
   useEffect(() => {
     loadScore();
@@ -23,34 +23,64 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
   const loadScore = async () => {
     try {
-      const xml = await api.getScore(jobId);
-      setMusicXML(xml);
-      loadFromMusicXML(xml);
+      setLoading(true);
+      setError(null);
+
+      // Fetch MIDI file and metadata in parallel
+      const [midiData, metadata] = await Promise.all([
+        getMidiFile(jobId),
+        getMetadata(jobId),
+      ]);
+
+      // Load MIDI into notation store
+      await loadFromMidi(midiData, {
+        tempo: metadata.tempo,
+        keySignature: metadata.key_signature,
+        timeSignature: metadata.time_signature,
+      });
+
       setLoading(false);
     } catch (err) {
       console.error('Failed to load score:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load score');
       setLoading(false);
     }
   };
 
   const handleExportMusicXML = () => {
-    const blob = new Blob([musicXML], {
-      type: 'application/vnd.recordare.musicxml+xml',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `score_${jobId}.musicxml`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // TODO: Generate MusicXML from edited score state
+    alert('MusicXML export coming soon - will generate from your edited notation');
   };
 
-  const handleExportMIDI = () => {
-    alert('MIDI export not yet implemented');
+  const handleExportMIDI = async () => {
+    try {
+      // Download the original MIDI file
+      const midiData = await getMidiFile(jobId);
+      const blob = new Blob([midiData], { type: 'audio/midi' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `score_${jobId}.mid`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export MIDI:', err);
+      alert('Failed to export MIDI file');
+    }
   };
 
   if (loading) {
     return <div className="score-editor loading">Loading score...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="score-editor error">
+        <h2>Error Loading Score</h2>
+        <p>{error}</p>
+        <button onClick={loadScore}>Retry</button>
+      </div>
+    );
   }
 
   return (
@@ -65,7 +95,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
       <PlaybackControls />
 
-      <NotationCanvas musicXML={musicXML} />
+      <NotationCanvas />
 
       <div className="editor-instructions">
         <h3>Editing Instructions (MVP)</h3>

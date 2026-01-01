@@ -3,6 +3,7 @@
  */
 import { create } from 'zustand';
 import { parseMusicXML } from '../utils/musicxml-parser';
+import { parseMidiFile, assignChordIds } from '../utils/midi-parser';
 
 export interface Note {
   id: string;
@@ -13,6 +14,7 @@ export interface Note {
   dotted: boolean;
   accidental?: 'sharp' | 'flat' | 'natural';
   isRest: boolean;
+  chordId?: string; // Group chord notes together (notes with same chordId are rendered as single VexFlow chord)
 }
 
 export interface Measure {
@@ -48,6 +50,14 @@ interface NotationState {
 
   // Actions
   loadFromMusicXML: (xml: string) => void;
+  loadFromMidi: (
+    midiData: ArrayBuffer,
+    metadata?: {
+      tempo?: number;
+      keySignature?: string;
+      timeSignature?: { numerator: number; denominator: number };
+    }
+  ) => Promise<void>;
   exportToMusicXML: () => string;
   addNote: (measureId: string, note: Note) => void;
   deleteNote: (noteId: string) => void;
@@ -81,6 +91,40 @@ export const useNotationStore = create<NotationState>((set, _get) => ({
           key: 'C',
           timeSignature: '4/4',
           tempo: 120,
+          parts: [],
+          measures: [],
+        },
+      });
+    }
+  },
+
+  loadFromMidi: async (midiData, metadata) => {
+    try {
+      let score = await parseMidiFile(midiData, {
+        tempo: metadata?.tempo,
+        timeSignature: metadata?.timeSignature,
+        keySignature: metadata?.keySignature,
+        splitAtMiddleC: true,
+        middleCNote: 60,
+      });
+
+      // Assign chord IDs to simultaneous notes
+      score = assignChordIds(score);
+
+      set({ score });
+    } catch (error) {
+      console.error('Failed to parse MIDI:', error);
+      // Fallback to empty score
+      set({
+        score: {
+          id: 'score-1',
+          title: 'Transcribed Score',
+          composer: 'YourMT3+',
+          key: metadata?.keySignature || 'C',
+          timeSignature: metadata?.timeSignature
+            ? `${metadata.timeSignature.numerator}/${metadata.timeSignature.denominator}`
+            : '4/4',
+          tempo: metadata?.tempo || 120,
           parts: [],
           measures: [],
         },

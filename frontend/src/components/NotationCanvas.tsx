@@ -10,7 +10,6 @@ import type { Note, Part } from '../store/notation';
 import './NotationCanvas.css';
 
 interface NotationCanvasProps {
-  musicXML: string;
   showControls?: boolean;
   interactive?: boolean;
   onNoteSelect?: (id: string) => void;
@@ -20,7 +19,7 @@ interface NotationCanvasProps {
   height?: number;
 }
 
-export function NotationCanvas({ musicXML, showControls, interactive, onNoteSelect, selectedNotes, showMeasureNumbers, width, height }: NotationCanvasProps) {
+export function NotationCanvas({ showControls, interactive, onNoteSelect, selectedNotes, showMeasureNumbers, width, height }: NotationCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const score = useNotationStore((state) => state.score);
   const playingNoteIds = useNotationStore((state) => state.playingNoteIds);
@@ -58,13 +57,6 @@ export function NotationCanvas({ musicXML, showControls, interactive, onNoteSele
       containerRef.current.appendChild(label);
     }
 
-    // Show simple error when XML is obviously invalid
-    if (musicXML && musicXML.includes('<invalid')) {
-      const err = document.createElement('div');
-      err.textContent = 'Invalid MusicXML';
-      containerRef.current.appendChild(err);
-    }
-
     if (!score || !score.parts.length) {
       return;
     }
@@ -93,7 +85,7 @@ export function NotationCanvas({ musicXML, showControls, interactive, onNoteSele
       // Single staff fallback
       renderSingleStaff(context, score.parts[0], measuresPerRow, staveWidth, staveHeight, score);
     }
-  }, [musicXML, score]);
+  }, [score]);
 
   // Highlight playing notes
   useEffect(() => {
@@ -133,6 +125,16 @@ export function NotationCanvas({ musicXML, showControls, interactive, onNoteSele
 export default NotationCanvas;
 
 /**
+ * Convert key signature from music21 format (e.g., "A major", "F# minor")
+ * to VexFlow format (e.g., "A", "F#")
+ */
+function convertKeySignature(key: string): string {
+  if (!key) return 'C';
+  // Remove " major" or " minor" suffix
+  return key.replace(/ major| minor/gi, '').trim();
+}
+
+/**
  * Render grand staff with treble and bass clefs connected by brace
  */
 function renderGrandStaff(
@@ -160,8 +162,9 @@ function renderGrandStaff(
     if (col === 0) {
       trebleStave.addClef('treble');
       trebleStave.addTimeSignature(score.timeSignature);
-      if (score.key && score.key !== 'C') {
-        trebleStave.addKeySignature(score.key);
+      const vexflowKey = convertKeySignature(score.key);
+      if (vexflowKey && vexflowKey !== 'C') {
+        trebleStave.addKeySignature(vexflowKey);
       }
     }
     trebleStave.setContext(context).draw();
@@ -171,8 +174,9 @@ function renderGrandStaff(
     if (col === 0) {
       bassStave.addClef('bass');
       bassStave.addTimeSignature(score.timeSignature);
-      if (score.key && score.key !== 'C') {
-        bassStave.addKeySignature(score.key);
+      const vexflowKey = convertKeySignature(score.key);
+      if (vexflowKey && vexflowKey !== 'C') {
+        bassStave.addKeySignature(vexflowKey);
       }
     }
     bassStave.setContext(context).draw();
@@ -222,8 +226,9 @@ function renderSingleStaff(
     if (idx === 0) {
       stave.addClef(part.clef);
       stave.addTimeSignature(score.timeSignature);
-      if (score.key && score.key !== 'C') {
-        stave.addKeySignature(score.key);
+      const vexflowKey = convertKeySignature(score.key);
+      if (vexflowKey && vexflowKey !== 'C') {
+        stave.addKeySignature(vexflowKey);
       }
     }
 
@@ -245,58 +250,54 @@ function renderMeasureNotes(
   timeSignature: string
 ): void {
   try {
-    // Group notes by startTime to identify chords (notes with same duration/timing)
-    // Since our parser now keeps chord notes sequential, we need to identify them
-    // by checking if consecutive notes have the same duration and are pitched
+    // Group notes by chordId (trust the parser's chord grouping from MusicXML <chord/> tags)
+    // This is more accurate than re-detecting chords by duration
+    const noteGroups: Record<string, Note[]> = notes.reduce((groups, note) => {
+      const groupId = note.chordId || `single-${note.id}`;
+      if (!groups[groupId]) groups[groupId] = [];
+      groups[groupId].push(note);
+      return groups;
+    }, {} as Record<string, Note[]>);
+
+    // Convert each group to VexFlow note
     const vexNotes: StaveNote[] = [];
-    let i = 0;
-
-    while (i < notes.length) {
-      const currentNote = notes[i];
-
-      if (currentNote.isRest) {
-        // Rests are always single
-        try {
-          vexNotes.push(convertToVexNote(currentNote));
-        } catch (err) {
-          // Skip invalid rest
-        }
-        i++;
-        continue;
-      }
-
-      // Look ahead to find all notes with same duration (potential chord)
-      const chordNotes: Note[] = [currentNote];
-      let j = i + 1;
-
-      // Collect consecutive notes with same duration as a chord
-      while (j < notes.length &&
-             !notes[j].isRest &&
-             notes[j].duration === currentNote.duration &&
-             notes[j].dotted === currentNote.dotted) {
-        chordNotes.push(notes[j]);
-        j++;
-
-        // Limit chord size to reasonable amount (max 10 notes)
-        if (chordNotes.length >= 10) break;
-      }
-
-      // Create VexFlow note (single or chord)
+    for (const group of Object.values(noteGroups)) {
       try {
-        if (chordNotes.length === 1) {
-          vexNotes.push(convertToVexNote(chordNotes[0]));
+        if (group[0].isRest) {
+          // Rests are always single
+          vexNotes.push(convertToVexNote(group[0]));
+        } else if (group.length === 1) {
+          // Single note
+          vexNotes.push(convertToVexNote(group[0]));
         } else {
-          vexNotes.push(convertToVexChord(chordNotes));
+          // Chord (multiple notes with same chordId)
+          vexNotes.push(convertToVexChord(group));
         }
       } catch (err) {
         // Skip invalid note/chord
+        console.warn('Failed to convert note/chord:', err);
       }
-
-      i = j;
     }
 
+    // Handle empty measures by rendering a whole rest
     if (vexNotes.length === 0) {
-      return; // No valid notes to render
+      const [beats, beatValue] = timeSignature.split('/').map(Number);
+      // Use whole rest for 4/4, half rest for 2/4, etc.
+      const restDuration = beats >= 4 ? 'w' : beats >= 2 ? 'h' : 'q';
+
+      const wholeRest = new StaveNote({
+        keys: ['b/4'],
+        duration: restDuration + 'r',
+      });
+
+      const voice = new Voice({ num_beats: beats, beat_value: beatValue });
+      voice.setMode(Voice.Mode.SOFT);
+      voice.addTickables([wholeRest]);
+
+      const formatter = new Formatter();
+      formatter.joinVoices([voice]).format([voice], stave.getWidth() - 20);
+      voice.draw(context, stave);
+      return;
     }
 
     // Create voice - use SOFT mode for now to handle incomplete measures gracefully

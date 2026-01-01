@@ -72,13 +72,20 @@ export function parseMusicXML(xml: string): Score {
 
     const noteElements = measureEl.querySelectorAll('note');
     let currentChord: Note[] = [];
+    let currentChordId: string | null = null;
 
-    noteElements.forEach((noteEl) => {
+    noteElements.forEach((noteEl, noteIdx) => {
       const parsedNote = parseNoteElement(noteEl);
       if (!parsedNote) return;
 
       // Check if this note is part of a chord (simultaneous with previous note)
       const isChordMember = noteEl.querySelector('chord') !== null;
+
+      // Assign chord ID for chord grouping
+      if (!isChordMember) {
+        // Start new chord group (or single note)
+        currentChordId = `chord-${measureNumber}-${noteIdx}`;
+      }
 
       if (parsedNote.isRest) {
         // Flush any pending chord before adding rest
@@ -87,7 +94,7 @@ export function parseMusicXML(xml: string): Score {
           currentChord = [];
         }
 
-        // Include rests
+        // Include rests (rests don't have chordId)
         notes.push({
           id: `note-${measureNumber}-${notes.length}`,
           pitch: '',
@@ -96,6 +103,7 @@ export function parseMusicXML(xml: string): Score {
           startTime: 0,
           dotted: parsedNote.dotted,
           isRest: true,
+          chordId: undefined, // Rests are never part of chords
         });
       } else {
         // Build full pitch string for pitched notes
@@ -113,6 +121,7 @@ export function parseMusicXML(xml: string): Score {
           dotted: parsedNote.dotted,
           accidental: parsedNote.accidental as 'sharp' | 'flat' | 'natural' | undefined,
           isRest: false,
+          chordId: currentChordId || undefined, // Assign chord ID for grouping
         };
 
         if (isChordMember) {
@@ -205,17 +214,29 @@ function parseNoteElement(noteEl: Element): ParsedNote | null {
 
   const step = pitchEl.querySelector('step')?.textContent;
   const octave = pitchEl.querySelector('octave')?.textContent;
-  const alter = pitchEl.querySelector('alter')?.textContent;
+  const alter = pitchEl.querySelector('alter')?.textContent; // Semantic pitch alteration
+  const accidentalEl = noteEl.querySelector('accidental'); // Visual accidental display
   const dotEl = noteEl.querySelector('dot');
 
   if (!step || !octave) return null;
 
+  // Parse accidental from both <alter> (semantic) and <accidental> (visual) tags
   let accidental: string | undefined;
+
+  // Priority 1: Use <alter> for pitch accuracy (indicates actual pitch)
   if (alter) {
     const alterValue = parseInt(alter);
     if (alterValue === 1) accidental = 'sharp';
     else if (alterValue === -1) accidental = 'flat';
     else if (alterValue === 0) accidental = 'natural';
+  }
+
+  // Priority 2: If no <alter>, check <accidental> tag (visual notation)
+  if (!accidental && accidentalEl) {
+    const accType = accidentalEl.textContent;
+    if (accType === 'sharp') accidental = 'sharp';
+    else if (accType === 'flat') accidental = 'flat';
+    else if (accType === 'natural') accidental = 'natural';
   }
 
   return {

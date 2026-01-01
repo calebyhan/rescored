@@ -13,6 +13,7 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
     "@xmldom/xmldom": "^0.8.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -29,6 +30,7 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^1.1.0",
     "@vitest/ui": "^1.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -38,7 +40,6 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
-    "vitest": "^1.1.0",
-    "@vitest/coverage-v8": "^1.1.0"
+    "vitest": "^1.1.0"
   }
 }

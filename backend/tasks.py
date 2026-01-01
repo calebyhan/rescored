@@ -99,10 +99,25 @@ def process_transcription_task(self, job_id: str):
         # Copy the MusicXML file to outputs
         shutil.copy(str(temp_output_path), str(output_path))
 
-        # Copy the cleaned MIDI file to outputs
-        temp_midi_path = pipeline.temp_dir / "piano_clean.mid"
+        # Copy the MIDI file to outputs (YourMT3+ or basic-pitch)
+        # transcribe_to_midi() renames all MIDI files to piano.mid for consistency
+        temp_midi_path = pipeline.temp_dir / "piano.mid"
+        print(f"[DEBUG] Checking for MIDI at: {temp_midi_path}")
+        print(f"[DEBUG] MIDI exists: {temp_midi_path.exists()}")
+
         if temp_midi_path.exists():
+            print(f"[DEBUG] Copying MIDI from {temp_midi_path} to {midi_path}")
             shutil.copy(str(temp_midi_path), str(midi_path))
+            print(f"[DEBUG] Copy complete, destination exists: {midi_path.exists()}")
+        else:
+            print(f"[DEBUG] WARNING: No MIDI file found at either location!")
+
+        # Store metadata for API access
+        metadata = getattr(pipeline, 'metadata', {
+            "tempo": 120.0,
+            "time_signature": {"numerator": 4, "denominator": 4},
+            "key_signature": "C",
+        })
 
         # Cleanup temp files (pipeline has its own cleanup method)
         pipeline.cleanup()
@@ -113,6 +128,7 @@ def process_transcription_task(self, job_id: str):
             "progress": 100,
             "output_path": str(output_path.absolute()),
             "midi_path": str(midi_path.absolute()) if temp_midi_path.exists() else "",
+            "metadata": json.dumps(metadata),
             "completed_at": datetime.utcnow().isoformat(),
         })
 
@@ -128,12 +144,25 @@ def process_transcription_task(self, job_id: str):
         return str(output_path)
 
     except Exception as e:
+        import traceback
+
+        # Determine if error is retryable (only retry transient errors, not code bugs)
+        RETRYABLE_EXCEPTIONS = (
+            ConnectionError,  # Network errors
+            TimeoutError,     # Timeout errors
+            IOError,          # I/O errors (file system, disk full, etc.)
+        )
+
+        is_retryable = isinstance(e, RETRYABLE_EXCEPTIONS) and self.request.retries < self.max_retries
+
         # Mark job as failed
         redis_client.hset(f"job:{job_id}", mapping={
             "status": "failed",
             "error": json.dumps({
                 "message": str(e),
-                "retryable": self.request.retries < self.max_retries,
+                "type": type(e).__name__,
+                "retryable": is_retryable,
+                "traceback": traceback.format_exc(),
             }),
             "failed_at": datetime.utcnow().isoformat(),
         })
@@ -144,16 +173,20 @@ def process_transcription_task(self, job_id: str):
             "job_id": job_id,
             "error": {
                 "message": str(e),
-                "retryable": self.request.retries < self.max_retries,
+                "type": type(e).__name__,
+                "retryable": is_retryable,
             },
             "timestamp": datetime.utcnow().isoformat(),
         }
         redis_client.publish(f"job:{job_id}:updates", json.dumps(error_msg))
 
-        # Retry if retryable
-        if self.request.retries < self.max_retries:
+        # Only retry if the error is transient (network, I/O, etc.)
+        if is_retryable:
+            print(f"[RETRY] Retrying job {job_id} (attempt {self.request.retries + 1}/{self.max_retries})")
             raise self.retry(exc=e, countdown=2 ** self.request.retries)
         else:
+            # Non-retryable error (code bug, validation error, etc.) - fail immediately
+            print(f"[ERROR] Non-retryable error for job {job_id}: {type(e).__name__}: {e}")
             raise
 
 

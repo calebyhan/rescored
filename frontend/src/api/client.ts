@@ -141,3 +141,29 @@ export async function getJobStatus(jobId: string) {
 export async function downloadScore(jobId: string) {
   return api.getScore(jobId);
 }
+
+export async function getMidiFile(jobId: string): Promise<ArrayBuffer> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/scores/${jobId}/midi`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch MIDI file');
+  }
+
+  return response.arrayBuffer();
+}
+
+export interface ScoreMetadata {
+  tempo: number;
+  key_signature: string;
+  time_signature: { numerator: number; denominator: number };
+}
+
+export async function getMetadata(jobId: string): Promise<ScoreMetadata> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/scores/${jobId}/metadata`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch metadata');
+  }
+
+  return response.json();
+}

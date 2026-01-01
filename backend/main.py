@@ -376,6 +376,40 @@ async def download_midi(job_id: str):
     )
 
 
+@app.get("/api/v1/scores/{job_id}/metadata")
+async def get_metadata(job_id: str):
+    """
+    Get detected metadata for a completed transcription.
+
+    Returns tempo, key signature, and time signature detected from audio.
+
+    Args:
+        job_id: Job identifier
+
+    Returns:
+        JSON with tempo, key_signature, time_signature
+    """
+    job_data = redis_client.hgetall(f"job:{job_id}")
+
+    if not job_data or job_data.get('status') != 'completed':
+        raise HTTPException(status_code=404, detail="Metadata not available")
+
+    metadata_str = job_data.get('metadata')
+    if not metadata_str:
+        # Return defaults if metadata not stored (for older jobs)
+        return {
+            "tempo": 120.0,
+            "key_signature": "C",
+            "time_signature": {"numerator": 4, "denominator": 4},
+        }
+
+    try:
+        metadata = json.loads(metadata_str)
+        return metadata
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Invalid metadata format")
+
+
 # === WebSocket Endpoint ===
 
 @app.websocket("/api/v1/jobs/{job_id}/stream")
@@ -401,9 +435,18 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
                     update = json.loads(message['data'])
                     await websocket.send_json(update)
 
-                    # Close connection if job completed or failed
-                    if update.get('type') in ['completed', 'error']:
+                    # Close connection if job completed
+                    if update.get('type') == 'completed':
                         break
+
+                    # Close connection if job failed with non-retryable error
+                    if update.get('type') == 'error':
+                        error_info = update.get('error', {})
+                        is_retryable = error_info.get('retryable', False)
+                        if not is_retryable:
+                            # Only close if error is permanent
+                            break
+                        # If retryable, keep connection open for retry progress updates
 
         # Send initial status
         job_data = redis_client.hgetall(f"job:{job_id}")
