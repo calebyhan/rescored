@@ -10,6 +10,7 @@ Based on: https://huggingface.co/spaces/mimbres/YourMT3
 
 import sys
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -192,10 +193,10 @@ class YourMT3Transcriber:
                 midi_path = transcribe(self.model, audio_info)
                 midi_path = Path(midi_path)
 
-                # Move to output directory if needed
+                # Move to output directory if needed (use shutil.move for cross-filesystem support)
                 if midi_path.parent != output_dir:
                     final_path = output_dir / midi_path.name
-                    midi_path.rename(final_path)
+                    shutil.move(str(midi_path), str(final_path))
                     midi_path = final_path
 
                 print(f"Transcription complete: {midi_path}")
