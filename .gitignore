@@ -228,6 +228,7 @@ backend/*.wav
 backend/ymt/model_output/
 backend/ymt/*.mid
 backend/ymt/*.log
+backend/ymt/yourmt3_core/amt/src/extras/auth2/token_data.json
 
 # Frontend
 frontend/node_modules/

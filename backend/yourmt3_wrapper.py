@@ -114,6 +114,10 @@ class YourMT3Transcriber:
         original_cwd = os.getcwd()
         amt_src_dir = _base_dir / "ymt" / "yourmt3_core" / "amt" / "src"
 
+        # Pre-create the logs directory that YourMT3 expects (relative to amt/src)
+        logs_dir = amt_src_dir / "amt" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             os.chdir(str(amt_src_dir))
 
