@@ -161,6 +161,10 @@ class YourMT3Transcriber:
         print(f"Transcribing: {audio_path}")
 
         try:
+            # Set torchaudio backend to soundfile (more portable than torchcodec)
+            # This avoids torchcodec dependency issues on clusters without FFmpeg libraries
+            torchaudio.set_audio_backend("soundfile")
+
             # Import transcribe function
             from model_helper import transcribe
 
