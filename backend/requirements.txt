@@ -16,7 +16,7 @@ Cython  # Required by madmom
 madmom>=0.16.1  # Zero-tradeoff: Beat tracking and multi-scale tempo detection
 scipy
 torch>=2.0.0
-torchaudio>=2.9.1
+torchaudio==2.1.0  # Pin to version that uses SoundFile backend, not torchcodec
 demucs>=3.0.6
 
 # Pitch detection (macOS default runtime is CoreML)
