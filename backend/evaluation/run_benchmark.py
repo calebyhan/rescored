@@ -36,26 +36,31 @@ def transcribe_with_yourmt3(audio_path: Path, output_dir: Path) -> Path:
     Returns:
         Path to output MIDI file
     """
+    import shutil
+    import uuid
+
     config = Settings()
 
-    # Create a temporary job ID for benchmarking
-    import uuid
+    # Create a temporary job ID and storage for benchmarking
     job_id = f"benchmark_{uuid.uuid4().hex[:8]}"
+    temp_storage = Path("/tmp/rescored_benchmark")
+    temp_storage.mkdir(parents=True, exist_ok=True)
 
-    # Initialize pipeline
-    pipeline = TranscriptionPipeline(job_id=job_id, config=config)
-
-    # Create temporary output directory
-    temp_dir = Path("/tmp/rescored_benchmark") / job_id
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy audio to temp dir (pipeline expects YouTube audio download)
-    import shutil
-    temp_audio = temp_dir / "audio.wav"
-    shutil.copy(audio_path, temp_audio)
+    # Initialize pipeline with dummy URL (not used for benchmark)
+    pipeline = TranscriptionPipeline(
+        job_id=job_id,
+        youtube_url="benchmark://test",  # Dummy URL
+        storage_path=temp_storage,
+        config=config
+    )
 
     try:
+        # Copy audio to pipeline's temp directory
+        temp_audio = pipeline.temp_dir / "audio.wav"
+        shutil.copy(audio_path, temp_audio)
+
         # Run source separation
+        print(f"   Running Demucs separation...")
         separated_audio_dir = pipeline.separate_audio(temp_audio)
         piano_stem = separated_audio_dir / "other.wav"
 
@@ -63,7 +68,11 @@ def transcribe_with_yourmt3(audio_path: Path, output_dir: Path) -> Path:
             raise FileNotFoundError(f"Source separation failed: {piano_stem}")
 
         # Run transcription
+        print(f"   Running YourMT3+ transcription...")
         midi_path = pipeline.transcribe_to_midi(piano_stem)
+
+        if not midi_path or not midi_path.exists():
+            raise FileNotFoundError(f"Transcription failed: no MIDI output")
 
         # Copy result to output directory
         output_midi = output_dir / f"{audio_path.stem}.mid"
@@ -73,7 +82,7 @@ def transcribe_with_yourmt3(audio_path: Path, output_dir: Path) -> Path:
 
     finally:
         # Cleanup temp directory
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(temp_storage, ignore_errors=True)
 
 
 def transcribe_with_ensemble(audio_path: Path, output_dir: Path) -> Path:
