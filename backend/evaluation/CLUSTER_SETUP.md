@@ -75,6 +75,9 @@ pip install Cython
 # Install madmom separately to avoid build isolation issues
 pip install --no-build-isolation madmom>=0.16.1
 
+# Uninstall torchcodec if it was previously installed (causes FFmpeg compatibility issues)
+pip uninstall -y torchcodec
+
 # Install remaining dependencies
 pip install -r requirements.txt
 ```
