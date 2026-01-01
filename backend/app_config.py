@@ -1,6 +1,17 @@
 """Configuration module for Rescored backend."""
 from pydantic_settings import BaseSettings
 from pathlib import Path
+import torch
+
+
+def _detect_device() -> str:
+    """Auto-detect best available device for YourMT3+."""
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
 
 
 class Settings(BaseSettings):
@@ -66,7 +77,7 @@ class Settings(BaseSettings):
     use_yourmt3_transcription: bool = True  # YourMT3+ for 80-85% accuracy (default, falls back to basic-pitch)
     transcription_service_url: str = "http://localhost:8000"  # Main API URL (YourMT3+ integrated)
     transcription_service_timeout: int = 300  # Timeout for transcription requests (seconds)
-    yourmt3_device: str = "mps"  # Device for YourMT3+: 'mps' (Apple Silicon), 'cuda' (NVIDIA), or 'cpu'
+    yourmt3_device: str = _detect_device()  # Auto-detect device: 'cuda' (NVIDIA), 'mps' (Apple Silicon), or 'cpu'
 
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs
