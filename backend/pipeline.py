@@ -87,6 +87,9 @@ class TranscriptionPipeline:
             self.progress(50, "transcribe", "Starting MIDI transcription")
             midi_path = self.transcribe_to_midi(stems['other'])
 
+            # Store final MIDI path for tasks.py to access
+            self.final_midi_path = midi_path
+
             self.progress(90, "musicxml", "Generating MusicXML")
             # Use minimal generator for YourMT3+, full generator for basic-pitch
             if self.config.use_yourmt3_transcription:
@@ -247,21 +250,25 @@ class TranscriptionPipeline:
             midi_path.rename(final_midi_path)
             midi_path = final_midi_path
 
+        # Detect tempo from source audio for accurate post-processing
+        source_audio = self.temp_dir / "audio.wav"
+        if source_audio.exists():
+            detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
+        else:
+            detected_tempo = 120.0
+
         # Conditional post-processing based on transcriber
         if self.config.use_yourmt3_transcription:
-            # YourMT3+ produces clean MIDI - use as-is
-            print(f"   Using YourMT3+ output directly (no post-processing)")
+            # YourMT3+ produces high-quality continuous-time MIDI
+            # Beat-synchronous quantization can damage polyphonic music with repeated notes
+            # For now, use original YourMT3+ output for best musical accuracy
+            print(f"   Using YourMT3+ output directly (preserving timing accuracy)")
+            print(f"   Note: Frontend will handle note duration approximation for display")
+
             return midi_path
         else:
             # basic-pitch needs full post-processing pipeline
             print(f"   Applying full post-processing for basic-pitch")
-
-            # Detect tempo from source audio for accurate post-processing
-            source_audio = self.temp_dir / "audio.wav"
-            if source_audio.exists():
-                detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
-            else:
-                detected_tempo = 120.0
 
             # 1. Polyphony detection
             range_semitones = self._get_midi_range(midi_path)

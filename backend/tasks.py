@@ -99,10 +99,10 @@ def process_transcription_task(self, job_id: str):
         # Copy the MusicXML file to outputs
         shutil.copy(str(temp_output_path), str(output_path))
 
-        # Copy the MIDI file to outputs (YourMT3+ or basic-pitch)
-        # transcribe_to_midi() renames all MIDI files to piano.mid for consistency
-        temp_midi_path = pipeline.temp_dir / "piano.mid"
-        print(f"[DEBUG] Checking for MIDI at: {temp_midi_path}")
+        # Copy the MIDI file to outputs (use actual processed MIDI from pipeline)
+        # Pipeline stores the final MIDI path (after quantization) in final_midi_path
+        temp_midi_path = getattr(pipeline, 'final_midi_path', pipeline.temp_dir / "piano.mid")
+        print(f"[DEBUG] Using MIDI from pipeline: {temp_midi_path}")
         print(f"[DEBUG] MIDI exists: {temp_midi_path.exists()}")
 
         if temp_midi_path.exists():
@@ -110,7 +110,7 @@ def process_transcription_task(self, job_id: str):
             shutil.copy(str(temp_midi_path), str(midi_path))
             print(f"[DEBUG] Copy complete, destination exists: {midi_path.exists()}")
         else:
-            print(f"[DEBUG] WARNING: No MIDI file found at either location!")
+            print(f"[DEBUG] WARNING: No MIDI file found at {temp_midi_path}!")
 
         # Store metadata for API access
         metadata = getattr(pipeline, 'metadata', {
