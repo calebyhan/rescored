@@ -139,6 +139,10 @@ class TranscriptionPipeline:
         Returns:
             dict with keys: drums, bass, vocals, other
         """
+        # Verify input audio exists
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Input audio not found: {audio_path}")
+
         # Run Demucs
         cmd = [
             "demucs",
@@ -150,7 +154,8 @@ class TranscriptionPipeline:
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
-            raise RuntimeError(f"Demucs failed: {result.stderr}")
+            error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+            raise RuntimeError(f"Demucs failed (exit code {result.returncode}): {error_msg}")
 
         # Demucs creates: temp/htdemucs/audio/*.wav
         demucs_output = self.temp_dir / "htdemucs" / audio_path.stem

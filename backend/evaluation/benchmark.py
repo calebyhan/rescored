@@ -161,7 +161,12 @@ class TranscriptionBenchmark:
             )
 
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
             print(f"❌ Test failed: {e}")
+            print(f"\nFull traceback:")
+            print(error_traceback)
+
             # Return placeholder metrics for failed test
             return BenchmarkResult(
                 test_case_name=test_case.name,
