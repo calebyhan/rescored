@@ -79,6 +79,8 @@ pip install --no-build-isolation madmom>=0.16.1
 pip install -r requirements.txt
 ```
 
+**Note**: The SLURM script will automatically load FFmpeg module, which is required by Demucs for audio loading. If running manually, load it with `module load ffmpeg`.
+
 ## Running Benchmarks
 
 ### Baseline Benchmark (YourMT3+)

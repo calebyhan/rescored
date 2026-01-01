@@ -63,8 +63,11 @@ echo ""
 mkdir -p logs/slurm
 mkdir -p evaluation/results
 
-# Activate virtual environment
+# Load required modules
 module load anaconda/2024.02
+module load ffmpeg  # Required by Demucs for audio loading
+
+# Activate virtual environment
 source activate .venv
 
 # Display GPU info
