@@ -65,25 +65,7 @@ mkdir -p evaluation/results
 
 # Activate virtual environment
 module load anaconda/2024.02
-if [ ! -d ".venv" ]; then
-    echo "Creating virtual environment..."
-    conda create -n .venv python=3.10
-fi
-
 source activate .venv
-
-# Install dependencies
-echo "Installing dependencies..."
-pip install -q --upgrade pip
-
-# Install Cython first (required by madmom)
-pip install -q Cython
-
-# Install madmom separately to avoid build isolation issues
-pip install -q --no-build-isolation madmom>=0.16.1
-
-# Install remaining dependencies
-pip install -q -r requirements.txt
 
 # Display GPU info
 echo ""
