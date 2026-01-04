@@ -86,6 +86,30 @@ class Settings(BaseSettings):
     vocal_instrument: int = 40  # MIDI program number for vocals (40=Violin, 73=Flute, 65=Alto Sax)
     use_6stem_demucs: bool = True  # Use 6-stem Demucs (piano, guitar, drums, bass, other) vs 4-stem
 
+    # Ensemble Transcription Configuration
+    use_ensemble_transcription: bool = True  # Use ensemble of YourMT3+ and ByteDance for higher accuracy
+    use_yourmt3_ensemble: bool = True  # Include YourMT3+ in ensemble
+    use_bytedance_ensemble: bool = True  # Include ByteDance piano transcription in ensemble
+    ensemble_voting_strategy: str = "weighted"  # Voting strategy: weighted, intersection, union, majority
+    ensemble_onset_tolerance_ms: int = 50  # Time window for matching notes (milliseconds)
+    ensemble_confidence_threshold: float = 0.6  # Minimum confidence for weighted voting
+
+    # Audio Preprocessing Configuration
+    enable_audio_preprocessing: bool = True  # Preprocess audio before separation/transcription
+    enable_audio_denoising: bool = True  # Remove background noise and artifacts
+    enable_audio_normalization: bool = True  # Normalize volume to consistent level
+    enable_highpass_filter: bool = True  # Remove low-frequency rumble (<30Hz)
+
+    # Post-Processing Filters (Phase 4)
+    enable_confidence_filtering: bool = False  # Filter low-confidence notes (reduces false positives)
+    confidence_threshold: float = 0.3  # Minimum confidence to keep note (0-1)
+    velocity_threshold: int = 20  # Minimum velocity to keep note (0-127)
+    min_note_duration: float = 0.05  # Minimum note duration in seconds
+
+    enable_key_aware_filtering: bool = False  # Filter isolated out-of-key notes (reduces false positives)
+    allow_chromatic_passing_tones: bool = True  # Keep brief chromatic notes (jazz, classical)
+    isolation_threshold: float = 0.5  # Time threshold (seconds) to consider note isolated
+
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs
     middle_c_split: int = 60  # MIDI note number for staff split (60 = Middle C)

@@ -25,17 +25,17 @@ graph TB
 ### Setup Requirements
 
 **Hardware**:
-- **GPU**: NVIDIA GPU with 8GB+ VRAM (for Demucs)
-  - Alternative: Run on CPU (10-20x slower, acceptable for development)
+- **GPU**: Apple Silicon (M1/M2/M3/M4 with MPS) OR NVIDIA GPU with 4GB+ VRAM
+  - Alternative: Run on CPU (10-15x slower, acceptable for development)
 - **RAM**: 16GB+ recommended
 - **Disk**: 10GB for models and temp files
 
 **Software**:
-- Docker Desktop (with GPU support) OR:
-  - Python 3.11+
-  - Node.js 18+
-  - Redis 7+
-  - CUDA Toolkit (if using GPU)
+- **Python 3.10** (required for madmom compatibility)
+- **Node.js 18+**
+- **Redis 7+**
+- **FFmpeg**
+- **YouTube cookies** (required as of December 2024)
 
 ### Docker Compose Setup (Recommended)
 
@@ -107,44 +107,75 @@ volumes:
 - Slower hot reload than native
 - GPU support requires Docker Desktop on Mac (experimental)
 
+### Quick Start (Recommended)
+
+Use the provided shell scripts to start/stop all services:
+
+```bash
+# From project root
+./start.sh
+
+# View logs
+tail -f logs/api.log      # Backend API
+tail -f logs/worker.log   # Celery worker
+tail -f logs/frontend.log # Frontend
+
+# Stop all services
+./stop.sh
+```
+
+**What `start.sh` does:**
+1. Starts Redis (if not already running via Homebrew)
+2. Activates Python 3.10 venv
+3. Starts Backend API (uvicorn) in background
+4. Starts Celery Worker (--pool=solo for macOS) in background
+5. Starts Frontend (npm run dev) in background
+6. Writes all logs to `logs/` directory
+
+**Services available at:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
 ### Manual Setup (Alternative)
 
-**Terminal 1 - Redis**:
+If you prefer to run services manually in separate terminals:
+
+**Terminal 1 - Redis (macOS with Homebrew)**:
 ```bash
-redis-server
+brew services start redis
+redis-cli ping  # Should return PONG
 ```
 
 **Terminal 2 - Backend API**:
 ```bash
 cd backend
-uv venv
 source .venv/bin/activate
-uv pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Terminal 3 - Celery Worker**:
 ```bash
 cd backend
 source .venv/bin/activate
-celery -A tasks worker --loglevel=info
+# Use --pool=solo on macOS to avoid fork() crashes with ML libraries
+celery -A tasks worker --loglevel=info --pool=solo
 ```
 
 **Terminal 4 - Frontend**:
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 
 **Benefits**:
-- Faster hot reload
-- Easier debugging
-- More control
+- Easier debugging (separate terminal per service)
+- More control over each service
+- See output in real-time
 
 **Limitations**:
-- Managing multiple terminals
-- Environment inconsistency
+- Managing 4 terminals
+- Need to manually stop each service
 
 ---
 

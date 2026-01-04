@@ -14,18 +14,31 @@ class TestProcessTranscriptionTask:
         """Test successful task execution."""
         from tasks import process_transcription_task
 
-        # Mock job data in Redis
+        # Mock job data in Redis - all string values
         job_data = {
-            'job_id': sample_job_id,
+            'job_id': str(sample_job_id),
             'youtube_url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
             'video_id': 'dQw4w9WgXcQ',
             'options': '{"instruments": ["piano"]}'
         }
         mock_redis.hgetall.return_value = job_data
 
+        # Ensure pipeline method returns None
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_redis
+
+        # Create actual files so they exist
+        (temp_storage_dir / "output.musicxml").write_text("<?xml version='1.0'?><score-partwise></score-partwise>")
+        (temp_storage_dir / "output.mid").write_bytes(b"MThd")
+
         # Mock successful pipeline instance
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = str(temp_storage_dir / "output.musicxml")
+        mock_pipeline.final_midi_path = temp_storage_dir / "output.mid"
+        mock_pipeline.metadata = {
+            "tempo": 120.0,
+            "time_signature": {"numerator": 4, "denominator": 4},
+            "key_signature": "C"
+        }
         mock_pipeline_class.return_value = mock_pipeline
 
         # Execute task
@@ -84,15 +97,28 @@ class TestProcessTranscriptionTask:
         from tasks import process_transcription_task
 
         job_data = {
-            'job_id': sample_job_id,
+            'job_id': str(sample_job_id),
             'youtube_url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
             'video_id': 'dQw4w9WgXcQ',
             'options': '{}'
         }
         mock_redis.hgetall.return_value = job_data
-        
+
+        # Create actual files so they exist
+        (temp_storage_dir / "output.musicxml").write_text("<?xml version='1.0'?><score-partwise></score-partwise>")
+        (temp_storage_dir / "output.mid").write_bytes(b"MThd")
+
+        # Ensure pipeline method returns None
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_redis
+
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = str(temp_storage_dir / "output.musicxml")
+        mock_pipeline.final_midi_path = temp_storage_dir / "output.mid"
+        mock_pipeline.metadata = {
+            "tempo": 120.0,
+            "time_signature": {"numerator": 4, "denominator": 4},
+            "key_signature": "C"
+        }
         mock_pipeline_class.return_value = mock_pipeline
 
         process_transcription_task(sample_job_id)

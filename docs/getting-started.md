@@ -164,22 +164,43 @@ graph TB
 
 ## Setting Up Local Development
 
-See [Deployment Strategy](architecture/deployment.md) for detailed setup, but quick start:
+See the [main README](../README.md) for detailed setup instructions. Quick start:
 
 ```bash
 # Clone repo
 git clone https://github.com/yourusername/rescored.git
 cd rescored
 
-# Start services with Docker Compose
-docker-compose up
+# Setup backend (Python 3.10)
+cd backend
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Setup frontend
+cd ../frontend
+npm install
+
+# Start all services (from project root)
+cd ..
+./start.sh
 
 # Services:
 # - Frontend: http://localhost:5173
-# - API: http://localhost:8000
-# - Redis: localhost:6379
-# - Celery worker: Running in background
+# - Backend API: http://localhost:8000
+# - API Docs: http://localhost:8000/docs
+# - Redis: localhost:6379 (must be running: brew services start redis)
+
+# Stop all services
+./stop.sh
 ```
+
+**Requirements:**
+- Python 3.10 (for madmom compatibility)
+- Node.js 18+
+- Redis 7+
+- FFmpeg
+- YouTube cookies (see README for setup)
 
 ---
 

@@ -85,18 +85,18 @@ class TestTranscriptionPipelineClass:
     def test_pipeline_has_required_methods(self):
         """Test TranscriptionPipeline has all required methods."""
         from pipeline import TranscriptionPipeline
-        
+
         pipeline = TranscriptionPipeline("test_job", "http://example.com", Path("/tmp"))
-        
+
         required_methods = [
             'download_audio',
             'separate_sources',
             'transcribe_to_midi',
             'clean_midi',
-            'generate_musicxml',
+            'generate_musicxml_minimal',
             'cleanup'
         ]
-        
+
         for method in required_methods:
             assert hasattr(pipeline, method)
             assert callable(getattr(pipeline, method))

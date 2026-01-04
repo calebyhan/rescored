@@ -28,6 +28,7 @@ This documentation serves as the technical blueprint for implementing Rescored. 
 3. [Audio Processing Pipeline](backend/pipeline.md) - Core workflow
 4. [API Design](backend/api.md)
 5. [Background Workers](backend/workers.md)
+6. [Testing Guide](backend/testing.md) - Writing and running tests
 
 ### For Frontend Engineers
 1. [Architecture Overview](architecture/overview.md)
@@ -53,6 +54,7 @@ This documentation serves as the technical blueprint for implementing Rescored. 
 - [Audio Processing Pipeline](backend/pipeline.md) - End-to-end audio → notation workflow
 - [API Design](backend/api.md) - REST endpoints and WebSocket protocol
 - [Background Workers](backend/workers.md) - Async job processing with Celery
+- [Testing Guide](backend/testing.md) - Backend test suite and best practices
 
 ### Frontend
 - [Notation Rendering](frontend/notation-rendering.md) - Sheet music display with VexFlow

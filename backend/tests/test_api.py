@@ -45,8 +45,8 @@ class TestTranscribeEndpoint:
     """Test transcription submission endpoint."""
 
     @patch('main.process_transcription_task')
-    @patch('utils.check_video_availability')
-    @patch('utils.validate_youtube_url')
+    @patch('app_utils.check_video_availability')
+    @patch('main.validate_youtube_url')
     def test_submit_valid_transcription(
         self,
         mock_validate,
@@ -81,7 +81,7 @@ class TestTranscribeEndpoint:
         # Verify Celery task was queued
         assert mock_task.delay.called
 
-    @patch('utils.validate_youtube_url')
+    @patch('main.validate_youtube_url')
     def test_submit_invalid_url(self, mock_validate, test_client):
         """Test submitting invalid YouTube URL."""
         mock_validate.return_value = (False, "Invalid YouTube URL format")
@@ -117,8 +117,8 @@ class TestTranscribeEndpoint:
         assert response.status_code == 422
         assert "too long" in response.json()["detail"]
 
-    @patch('utils.validate_youtube_url')
-    @patch('utils.check_video_availability')
+    @patch('main.validate_youtube_url')
+    @patch('main.check_video_availability')
     def test_submit_with_options(
         self,
         mock_check_availability,
@@ -145,8 +145,8 @@ class TestTranscribeEndpoint:
 class TestRateLimiting:
     """Test rate limiting middleware."""
 
-    @patch('utils.validate_youtube_url')
-    @patch('utils.check_video_availability')
+    @patch('main.validate_youtube_url')
+    @patch('main.check_video_availability')
     @patch('main.process_transcription_task')
     def test_rate_limit_enforced(
         self,
@@ -172,8 +172,8 @@ class TestRateLimiting:
         assert response.status_code == 429
         assert "Rate limit exceeded" in response.json()["detail"]
 
-    @patch('utils.validate_youtube_url')
-    @patch('utils.check_video_availability')
+    @patch('main.validate_youtube_url')
+    @patch('main.check_video_availability')
     @patch('main.process_transcription_task')
     def test_rate_limit_under_limit(
         self,

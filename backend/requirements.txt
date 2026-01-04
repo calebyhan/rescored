@@ -1,5 +1,4 @@
 # Web Framework
-# Note: This file now includes torch/torchaudio as they are required by demucs on macOS
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
@@ -12,11 +11,11 @@ redis==5.2.1
 yt-dlp>=2025.12.8
 soundfile==0.12.1
 librosa>=0.11.0
+scipy>=1.10.0
 Cython  # Required by madmom
 madmom>=0.16.1  # Zero-tradeoff: Beat tracking and multi-scale tempo detection
-scipy
 torch>=2.0.0
-torchaudio==2.1.0  # Pin to version that uses SoundFile backend, not torchcodec
+torchaudio>=2.0.0
 demucs>=3.0.6
 audio-separator>=0.40.0  # BS-RoFormer and UVR models for better vocal separation
 
@@ -41,7 +40,6 @@ python-dotenv==1.0.1
 tenacity==9.0.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
-numpy<2.0.0
 filelock  # Required by huggingface-hub and transformers
 pyyaml>=5.1  # Required by huggingface-hub and transformers
 requests>=2.21.0  # Required by tensorflow and transformers
@@ -51,3 +49,14 @@ wrapt>=1.11.0  # Required by tensorflow
 
 # WebSocket
 websockets==14.1
+
+# Testing dependencies
+pytest==8.2.0
+pytest-asyncio==0.24.0
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+httpx==0.26.0
+faker==22.5.1
+
+# Audio preprocessing (optional, for noise reduction)
+noisereduce>=3.0.0  # For spectral denoising in audio preprocessor

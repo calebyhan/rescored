@@ -36,6 +36,9 @@ app = FastAPI(
 # Redis client (initialized before middleware)
 redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
+# Async Redis client for WebSocket pub/sub
+async_redis_client = redis.asyncio.Redis.from_url(settings.redis_url, decode_responses=True)
+
 # YourMT3+ transcriber (loaded on startup)
 yourmt3_transcriber: Optional[YourMT3Transcriber] = None
 YOURMT3_TEMP_DIR = Path(tempfile.gettempdir()) / "yourmt3_service"
@@ -123,9 +126,12 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Clean up temporary files on shutdown."""
+    """Clean up temporary files and close Redis connections on shutdown."""
     if YOURMT3_TEMP_DIR.exists():
         shutil.rmtree(YOURMT3_TEMP_DIR, ignore_errors=True)
+
+    # Close async Redis client
+    await async_redis_client.close()
 
 
 # === Request/Response Models ===
@@ -422,31 +428,12 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
         job_id: Job identifier
     """
     await manager.connect(websocket, job_id)
+    pubsub = None
 
     try:
-        # Subscribe to Redis pub/sub for this job
-        pubsub = redis_client.pubsub()
-        pubsub.subscribe(f"job:{job_id}:updates")
-
-        # Listen for updates in a separate task
-        async def listen_for_updates():
-            for message in pubsub.listen():
-                if message['type'] == 'message':
-                    update = json.loads(message['data'])
-                    await websocket.send_json(update)
-
-                    # Close connection if job completed
-                    if update.get('type') == 'completed':
-                        break
-
-                    # Close connection if job failed with non-retryable error
-                    if update.get('type') == 'error':
-                        error_info = update.get('error', {})
-                        is_retryable = error_info.get('retryable', False)
-                        if not is_retryable:
-                            # Only close if error is permanent
-                            break
-                        # If retryable, keep connection open for retry progress updates
+        # Subscribe to Redis pub/sub for this job using async client
+        pubsub = async_redis_client.pubsub()
+        await pubsub.subscribe(f"job:{job_id}:updates")
 
         # Send initial status
         job_data = redis_client.hgetall(f"job:{job_id}")
@@ -461,14 +448,31 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
             }
             await websocket.send_json(initial_update)
 
-        # Listen for updates (blocking)
-        await listen_for_updates()
+        # Listen for updates asynchronously
+        async for message in pubsub.listen():
+            if message['type'] == 'message':
+                update = json.loads(message['data'])
+                await websocket.send_json(update)
+
+                # Close connection if job completed
+                if update.get('type') == 'completed':
+                    break
+
+                # Close connection if job failed with non-retryable error
+                if update.get('type') == 'error':
+                    error_info = update.get('error', {})
+                    is_retryable = error_info.get('retryable', False)
+                    if not is_retryable:
+                        # Only close if error is permanent
+                        break
+                    # If retryable, keep connection open for retry progress updates
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, job_id)
     finally:
-        pubsub.unsubscribe(f"job:{job_id}:updates")
-        pubsub.close()
+        if pubsub:
+            await pubsub.unsubscribe(f"job:{job_id}:updates")
+            await pubsub.close()
 
 
 # === Health Check ===

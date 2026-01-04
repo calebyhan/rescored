@@ -13,7 +13,10 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 **Tech Stack**:
 - **Backend**: Python/FastAPI + Celery + Redis
 - **Frontend**: React + VexFlow (notation) + Tone.js (playback)
-- **ML**: Demucs (source separation) + YourMT3+ (transcription, 80-85% accuracy) + basic-pitch (fallback)
+- **ML Pipeline**:
+  - BS-RoFormer (vocal removal) → Demucs (6-stem separation)
+  - YourMT3+ + ByteDance ensemble (90% accuracy on piano)
+  - Audio preprocessing + confidence/key filtering
 
 ## Quick Start
 
@@ -32,6 +35,23 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 # Clone repository
 git clone https://github.com/yourusername/rescored.git
 cd rescored
+
+# Pull large files with Git LFS (required for YourMT3+ model checkpoint)
+git lfs pull
+```
+
+**Note:** This repository uses **Git LFS** (Large File Storage) to store the YourMT3+ model checkpoint (~536MB). If you don't have Git LFS installed:
+
+```bash
+# macOS
+brew install git-lfs
+git lfs install
+git lfs pull
+
+# Linux (Debian/Ubuntu)
+sudo apt-get install git-lfs
+git lfs install
+git lfs pull
 ```
 
 ### Setup Redis (macOS)
@@ -52,20 +72,65 @@ redis-cli ping  # Should return PONG
 ```bash
 cd backend
 
-# Activate Python 3.10 virtual environment (already configured)
+# Ensure Python 3.10 is installed
+python3.10 --version  # Should show Python 3.10.x
+
+# Create virtual environment
+python3.10 -m venv .venv
+
+# Activate virtual environment
 source .venv/bin/activate
 
-# Verify Python version
-python --version  # Should show Python 3.10.x
+# Upgrade pip, setuptools, and wheel
+pip install --upgrade pip setuptools wheel
 
-# Backend dependencies are already installed in .venv
-# If you need to reinstall:
-# pip install -r requirements.txt
+# Install all dependencies (takes 10-15 minutes)
+pip install -r requirements.txt
+
+# Verify installation
+python -c "import torch; print(f'PyTorch {torch.__version__} installed')"
+python -c "import librosa; print(f'librosa installed')"
+python -c "import music21; print(f'music21 installed')"
 
 # Copy environment file and configure
 cp .env.example .env
 # Edit .env - ensure YOURMT3_DEVICE=mps for Apple Silicon GPU acceleration
 ```
+
+**What gets installed:**
+- Core ML frameworks: PyTorch 2.9+, torchaudio 2.9+
+- Audio processing: librosa, soundfile, demucs, audio-separator
+- Transcription: YourMT3+ dependencies (transformers, lightning, einops)
+- Music notation: music21, mido, pretty_midi
+- Web framework: FastAPI, uvicorn, celery, redis
+- Testing: pytest, pytest-asyncio, pytest-cov, pytest-mock
+- **Total: ~200 packages, ~3-4GB download**
+
+**Troubleshooting Installation:**
+
+If you encounter errors during `pip install -r requirements.txt`:
+
+1. **scipy build errors**: Make sure you have the latest pip/setuptools:
+   ```bash
+   pip install --upgrade pip setuptools wheel
+   ```
+
+2. **numpy version conflicts**: The requirements.txt is configured to use numpy 2.x which works with all packages. If you see conflicts, try:
+   ```bash
+   pip install --no-deps -r requirements.txt
+   pip check  # Verify no broken dependencies
+   ```
+
+3. **torch installation issues on macOS**: PyTorch should install pre-built wheels. If it tries to build from source:
+   ```bash
+   pip install --only-binary :all: torch torchaudio
+   ```
+
+4. **madmom build errors**: madmom requires Cython. Install it first:
+   ```bash
+   pip install Cython
+   pip install madmom
+   ```
 
 ### Setup Frontend
 
@@ -102,54 +167,60 @@ YouTube requires authentication for video downloads (as of December 2024). You *
    mv ~/Downloads/youtube.com_cookies.txt ./storage/youtube_cookies.txt
    ```
 
-4. **Start Services**
+## Running the Application
 
-   **Option A: Single Command (Recommended)**
-   ```bash
-   ./start.sh
-   ```
-   This starts all services in the background. Logs are written to `logs/` directory.
+### Start All Services (Recommended)
 
-   To stop all services:
-   ```bash
-   ./stop.sh
-   # Or press Ctrl+C in the terminal running start.sh
-   ```
+Use the provided shell scripts to start/stop all services at once:
 
-   To view logs while running:
-   ```bash
-   tail -f logs/api.log      # Backend API logs
-   tail -f logs/worker.log   # Celery worker logs
-   tail -f logs/frontend.log # Frontend logs
-   ```
+```bash
+# Start all services (backend API, Celery worker, frontend)
+./start.sh
+```
 
-   **Option B: Manual (3 separate terminals)**
+This starts all services in the background with logs written to the `logs/` directory.
 
-   **Terminal 1 - Backend API:**
-   ```bash
-   cd backend
-   source .venv/bin/activate
-   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-   ```
+**View logs in real-time:**
+```bash
+tail -f logs/api.log      # Backend API logs
+tail -f logs/worker.log   # Celery worker logs
+tail -f logs/frontend.log # Frontend logs
+```
 
-   **Terminal 2 - Celery Worker:**
-   ```bash
-   cd backend
-   source .venv/bin/activate
-   # Use --pool=solo on macOS to avoid fork() crashes with ML libraries
-   celery -A tasks worker --loglevel=info --pool=solo
-   ```
+**Stop all services:**
+```bash
+./stop.sh
+```
 
-   **Terminal 3 - Frontend:**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
+**Services available at:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-   **Services will be available at:**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
+### Manual Start (Alternative)
+
+If you prefer to run services manually in separate terminals:
+
+**Terminal 1 - Backend API:**
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Terminal 2 - Celery Worker:**
+```bash
+cd backend
+source .venv/bin/activate
+# Use --pool=solo on macOS to avoid fork() crashes with ML libraries
+celery -A tasks worker --loglevel=info --pool=solo
+```
+
+**Terminal 3 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
 
 **Verification:**
 ```bash
@@ -171,7 +242,11 @@ You should see the file listed.
 
 ### YourMT3+ Setup
 
-The backend uses **YourMT3+** as the primary transcription model (80-85% accuracy) with automatic fallback to basic-pitch (70% accuracy) if YourMT3+ is unavailable.
+The backend uses a **multi-model ensemble** for transcription:
+- **Primary**: YourMT3+ (multi-instrument, 80-85% base accuracy)
+- **Specialist**: ByteDance Piano Transcription (piano-specific, ~90% accuracy)
+- **Ensemble**: Weighted voting combines both models (90% accuracy on piano)
+- **Fallback**: basic-pitch if ensemble unavailable (~70% accuracy)
 
 **YourMT3+ model files and source code are already included in the repository.** The model checkpoint (~536MB) is stored via Git LFS in `backend/ymt/yourmt3_core/`.
 
@@ -237,20 +312,39 @@ You should see:
 
 ```
 rescored/
-├── backend/                # Python/FastAPI backend
-│   ├── main.py            # REST API + WebSocket server
-│   ├── tasks.py           # Celery background workers
-│   ├── pipeline.py        # Audio processing pipeline
-│   ├── config.py          # Configuration
-│   └── requirements.txt   # Python dependencies
-├── frontend/              # React frontend
+├── backend/                      # Python/FastAPI backend
+│   ├── main.py                  # REST API + WebSocket server
+│   ├── tasks.py                 # Celery background workers
+│   ├── pipeline.py              # Audio processing pipeline
+│   ├── app_config.py            # Configuration settings
+│   ├── app_utils.py             # Utility functions
+│   ├── audio_preprocessor.py   # Audio enhancement pipeline
+│   ├── ensemble_transcriber.py # Multi-model voting system
+│   ├── confidence_filter.py    # Post-processing filters
+│   ├── key_filter.py            # Music theory filters
+│   ├── requirements.txt         # Python dependencies (including tests)
+│   ├── tests/                   # Test suite (59 tests, 27% coverage)
+│   │   ├── test_api.py         # API endpoint tests
+│   │   ├── test_pipeline.py    # Pipeline component tests
+│   │   ├── test_tasks.py       # Celery task tests
+│   │   └── test_utils.py       # Utility function tests
+│   └── ymt/                     # YourMT3+ model and wrappers
+├── frontend/                    # React frontend
 │   ├── src/
-│   │   ├── components/    # UI components
-│   │   ├── store/         # Zustand state management
-│   │   └── api/           # API client
-│   └── package.json       # Node dependencies
-├── docs/                  # Comprehensive documentation
-└── docker-compose.yml     # Docker setup
+│   │   ├── components/         # UI components
+│   │   ├── store/              # Zustand state management
+│   │   └── api/                # API client
+│   └── package.json            # Node dependencies
+├── docs/                        # Comprehensive documentation
+│   ├── backend/                # Backend implementation guides
+│   ├── frontend/               # Frontend implementation guides
+│   ├── architecture/           # System design documents
+│   └── research/               # ML model comparisons
+├── logs/                        # Runtime logs (created by start.sh)
+├── storage/                     # YouTube cookies and temp files
+├── start.sh                     # Start all services
+├── stop.sh                      # Stop all services
+└── docker-compose.yml           # Docker setup (optional)
 ```
 
 ## Documentation
@@ -286,7 +380,12 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
 ## Accuracy Expectations
 
-**With YourMT3+ (recommended):**
+**With Ensemble (YourMT3+ + ByteDance) - Recommended:**
+- Simple piano: **~90% accurate** ✨
+- Complex pieces: **80-85% accurate**
+- Includes audio preprocessing, ensemble voting, and post-processing filters
+
+**With YourMT3+ only:**
 - Simple piano: **80-85% accurate**
 - Complex pieces: **70-75% accurate**
 
@@ -296,19 +395,30 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
 The interactive editor is designed to make fixing errors easy regardless of which transcription model is used.
 
+**Note**: Ensemble mode is enabled by default in `app_config.py`. ByteDance requires ~4GB VRAM and may fall back to YourMT3+ on systems with limited GPU memory.
+
 ## Development
 
 ### Running Tests
 
 ```bash
-# Backend tests
+# Backend tests (59 tests, ~5-10 seconds)
 cd backend
+source .venv/bin/activate
 pytest
+
+# Run with coverage report
+pytest --cov=. --cov-report=html
+
+# Run specific test file
+pytest tests/test_api.py -v
 
 # Frontend tests
 cd frontend
 npm test
 ```
+
+See [docs/backend/testing.md](docs/backend/testing.md) for detailed testing guide.
 
 ### API Documentation
 

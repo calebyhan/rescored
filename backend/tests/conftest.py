@@ -32,7 +32,7 @@ def mock_redis():
 def test_client(mock_redis, temp_storage_dir):
     """Create FastAPI test client with mocked dependencies."""
     with patch('main.redis_client', mock_redis):
-        with patch('config.settings.storage_path', temp_storage_dir):
+        with patch('app_config.settings.storage_path', temp_storage_dir):
             from main import app
             client = TestClient(app)
             yield client
