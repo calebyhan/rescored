@@ -253,6 +253,13 @@ storage/temp/*
 # Logs
 logs/
 *.log
+# Allow specific checkpoint file (tracked with Git LFS)
+# Negation rules must come after the ignore pattern
+!backend/ymt/yourmt3_core/logs/
+!backend/ymt/yourmt3_core/logs/2024/
+!backend/ymt/yourmt3_core/logs/2024/mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops/
+!backend/ymt/yourmt3_core/logs/2024/mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops/checkpoints/
+!backend/ymt/yourmt3_core/logs/2024/mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops/checkpoints/last.ckpt
 
 # macOS
 .DS_Store
