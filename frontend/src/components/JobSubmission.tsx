@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../api/client';
 import type { ProgressUpdate } from '../api/client';
+import { InstrumentSelector } from './InstrumentSelector';
 import './JobSubmission.css';
 
 interface JobSubmissionProps {
@@ -13,6 +14,7 @@ interface JobSubmissionProps {
 
 export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [selectedInstruments, setSelectedInstruments] = useState<string[]>(['piano']);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'processing' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -43,15 +45,24 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate URL
     const validation = validateUrl(youtubeUrl);
     if (validation) {
       setError(validation);
       return;
     }
+
+    // Validate at least one instrument is selected
+    if (selectedInstruments.length === 0) {
+      setError('Please select at least one instrument');
+      return;
+    }
+
     setStatus('submitting');
 
     try {
-      const response = await api.submitJob(youtubeUrl, { instruments: ['piano'] });
+      const response = await api.submitJob(youtubeUrl, { instruments: selectedInstruments });
       setYoutubeUrl('');
       if (onJobSubmitted) onJobSubmitted(response);
 
@@ -150,6 +161,11 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
 
       {(status === 'idle' || status === 'submitting') && (
         <form onSubmit={handleSubmit}>
+          <InstrumentSelector
+            selectedInstruments={selectedInstruments}
+            onChange={setSelectedInstruments}
+          />
+
           <div className="form-group">
             <label htmlFor="youtube-url">YouTube URL:</label>
             <input
@@ -167,7 +183,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
           </div>
           <button type="submit" disabled={status === 'submitting'}>Transcribe</button>
           {status === 'submitting' && <div>Submitting...</div>}
-          {error && <div role="alert">{error}</div>}
+          {error && <div role="alert" className="error-alert">{error}</div>}
         </form>
       )}
 

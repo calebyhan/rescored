@@ -10,6 +10,12 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Dict, Optional
 import pandas as pd
+import sys
+
+# Add backend directory to path for imports
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
 from evaluation.metrics import calculate_metrics, TranscriptionMetrics
 
@@ -19,7 +25,7 @@ class TestCase:
     """Represents a single test case for benchmarking."""
     name: str  # Descriptive name (e.g., "Chopin_Nocturne_Op9_No2")
     audio_path: Path  # Path to audio file (WAV/MP3)
-    ground_truth_midi: Path  # Path to ground truth MIDI file
+    ground_truth_midi: Optional[Path] = None  # Path to ground truth MIDI file (None for manual review)
     genre: str = "classical"  # Genre: classical, pop, jazz, simple
     difficulty: str = "medium"  # Difficulty: easy, medium, hard
     duration: Optional[float] = None  # Duration in seconds
@@ -29,7 +35,7 @@ class TestCase:
         return {
             'name': self.name,
             'audio_path': str(self.audio_path),
-            'ground_truth_midi': str(self.ground_truth_midi),
+            'ground_truth_midi': str(self.ground_truth_midi) if self.ground_truth_midi else None,
             'genre': self.genre,
             'difficulty': self.difficulty,
             'duration': self.duration
@@ -38,10 +44,11 @@ class TestCase:
     @classmethod
     def from_dict(cls, data: dict) -> 'TestCase':
         """Create TestCase from dictionary."""
+        ground_truth = data.get('ground_truth_midi')
         return cls(
             name=data['name'],
             audio_path=Path(data['audio_path']),
-            ground_truth_midi=Path(data['ground_truth_midi']),
+            ground_truth_midi=Path(ground_truth) if ground_truth else None,
             genre=data.get('genre', 'classical'),
             difficulty=data.get('difficulty', 'medium'),
             duration=data.get('duration')
@@ -138,18 +145,28 @@ class TranscriptionBenchmark:
 
             print(f"✅ Transcription completed in {processing_time:.1f}s")
 
-            # Calculate metrics
-            metrics = calculate_metrics(
-                predicted_midi,
-                test_case.ground_truth_midi,
-                onset_tolerance=self.onset_tolerance
-            )
+            # Calculate metrics only if ground truth is available
+            if test_case.ground_truth_midi:
+                metrics = calculate_metrics(
+                    predicted_midi,
+                    test_case.ground_truth_midi,
+                    onset_tolerance=self.onset_tolerance
+                )
 
-            print(f"\n📊 Results:")
-            print(f"   F1 Score: {metrics.f1_score:.3f}")
-            print(f"   Precision: {metrics.precision:.3f}")
-            print(f"   Recall: {metrics.recall:.3f}")
-            print(f"   Onset MAE: {metrics.onset_mae*1000:.1f}ms")
+                print(f"\n📊 Results:")
+                print(f"   F1 Score: {metrics.f1_score:.3f}")
+                print(f"   Precision: {metrics.precision:.3f}")
+                print(f"   Recall: {metrics.recall:.3f}")
+                print(f"   Onset MAE: {metrics.onset_mae*1000:.1f}ms")
+            else:
+                # No ground truth - create placeholder metrics for manual review
+                print(f"\n📝 No ground truth available - MIDI saved for manual review")
+                print(f"   Output: {predicted_midi}")
+                metrics = TranscriptionMetrics(
+                    precision=0.0, recall=0.0, f1_score=0.0,
+                    onset_mae=0.0, pitch_accuracy=0.0,
+                    true_positives=0, false_positives=0, false_negatives=0
+                )
 
             return BenchmarkResult(
                 test_case_name=test_case.name,

@@ -1,2 +1,0 @@
-test_case,genre,difficulty,f1_score,precision,recall,onset_mae,pitch_accuracy,true_positives,false_positives,false_negatives,processing_time,success,error
-MAESTRO_2004_AUDIO 02 R1 2004 05 Track05 wav,classical,easy,0.9831072434092655,0.9932764416860616,0.9731441601216113,0.005870731363360242,1.0,7682,52,212,114.05283236503601,True,

@@ -1,8 +1,8 @@
 /**
  * Zustand store for notation state management.
+ * Supports multi-instrument transcription.
  */
 import { create } from 'zustand';
-import { parseMusicXML } from '../utils/musicxml-parser';
 import { parseMidiFile, assignChordIds } from '../utils/midi-parser';
 
 export interface Note {
@@ -42,15 +42,22 @@ export interface Score {
 }
 
 interface NotationState {
+  // Multi-instrument support
+  scores: Map<string, Score>; // instrument -> Score
+  activeInstrument: string; // Currently viewing instrument (e.g., 'piano', 'vocals')
+  availableInstruments: string[]; // All transcribed instruments
+
+  // Legacy single-score access (for backward compatibility)
   score: Score | null;
+
   selectedNoteIds: string[];
   currentTool: 'select' | 'add' | 'delete';
   currentDuration: string;
   playingNoteIds: string[]; // Notes currently being played (for visual feedback)
 
   // Actions
-  loadFromMusicXML: (xml: string) => void;
   loadFromMidi: (
+    instrument: string,
     midiData: ArrayBuffer,
     metadata?: {
       tempo?: number;
@@ -58,7 +65,7 @@ interface NotationState {
       timeSignature?: { numerator: number; denominator: number };
     }
   ) => Promise<void>;
-  exportToMusicXML: () => string;
+  setActiveInstrument: (instrument: string) => void;
   addNote: (measureId: string, note: Note) => void;
   deleteNote: (noteId: string) => void;
   updateNote: (noteId: string, changes: Partial<Note>) => void;
@@ -69,72 +76,90 @@ interface NotationState {
   setPlayingNoteIds: (noteIds: string[]) => void;
 }
 
-export const useNotationStore = create<NotationState>((set, _get) => ({
+export const useNotationStore = create<NotationState>((set, get) => ({
+  // Multi-instrument state
+  scores: new Map(),
+  activeInstrument: 'piano',
+  availableInstruments: [],
+
+  // Legacy single-score (points to active instrument's score)
   score: null,
+
   selectedNoteIds: [],
   currentTool: 'select',
   currentDuration: 'quarter',
   playingNoteIds: [],
 
-  loadFromMusicXML: (xml: string) => {
-    try {
-      const score = parseMusicXML(xml);
-      set({ score });
-    } catch (error) {
-      console.error('Failed to parse MusicXML:', error);
-      // Fallback to empty score
-      set({
-        score: {
-          id: 'score-1',
-          title: 'Transcribed Score',
-          composer: 'Unknown',
-          key: 'C',
-          timeSignature: '4/4',
-          tempo: 120,
-          parts: [],
-          measures: [],
-        },
-      });
-    }
-  },
-
-  loadFromMidi: async (midiData, metadata) => {
+  loadFromMidi: async (instrument, midiData, metadata) => {
     try {
       let score = await parseMidiFile(midiData, {
         tempo: metadata?.tempo,
         timeSignature: metadata?.timeSignature,
         keySignature: metadata?.keySignature,
-        splitAtMiddleC: true,
+        splitAtMiddleC: instrument === 'piano', // Only split piano into grand staff
         middleCNote: 60,
       });
 
       // Assign chord IDs to simultaneous notes
       score = assignChordIds(score);
 
-      set({ score });
+      // Update scores map
+      const state = get();
+      const newScores = new Map(state.scores);
+      newScores.set(instrument, score);
+
+      // Update available instruments if this is a new one
+      const newAvailableInstruments = state.availableInstruments.includes(instrument)
+        ? state.availableInstruments
+        : [...state.availableInstruments, instrument];
+
+      set({
+        scores: newScores,
+        availableInstruments: newAvailableInstruments,
+        // Update legacy score if this is the active instrument
+        score: state.activeInstrument === instrument ? score : state.score,
+      });
     } catch (error) {
       console.error('Failed to parse MIDI:', error);
-      // Fallback to empty score
+      // Create fallback empty score
+      const emptyScore: Score = {
+        id: `score-${instrument}`,
+        title: 'Transcribed Score',
+        composer: 'YourMT3+',
+        key: metadata?.keySignature || 'C',
+        timeSignature: metadata?.timeSignature
+          ? `${metadata.timeSignature.numerator}/${metadata.timeSignature.denominator}`
+          : '4/4',
+        tempo: metadata?.tempo || 120,
+        parts: [],
+        measures: [],
+      };
+
+      const state = get();
+      const newScores = new Map(state.scores);
+      newScores.set(instrument, emptyScore);
+
+      const newAvailableInstruments = state.availableInstruments.includes(instrument)
+        ? state.availableInstruments
+        : [...state.availableInstruments, instrument];
+
       set({
-        score: {
-          id: 'score-1',
-          title: 'Transcribed Score',
-          composer: 'YourMT3+',
-          key: metadata?.keySignature || 'C',
-          timeSignature: metadata?.timeSignature
-            ? `${metadata.timeSignature.numerator}/${metadata.timeSignature.denominator}`
-            : '4/4',
-          tempo: metadata?.tempo || 120,
-          parts: [],
-          measures: [],
-        },
+        scores: newScores,
+        availableInstruments: newAvailableInstruments,
+        score: state.activeInstrument === instrument ? emptyScore : state.score,
       });
     }
   },
 
-  exportToMusicXML: () => {
-    // TODO: Implement MusicXML generation
-    return '<?xml version="1.0"?><score-partwise></score-partwise>';
+  setActiveInstrument: (instrument) => {
+    const state = get();
+    const instrumentScore = state.scores.get(instrument);
+
+    set({
+      activeInstrument: instrument,
+      score: instrumentScore || null,
+      selectedNoteIds: [], // Clear selection when switching instruments
+    });
   },
 
   addNote: (measureId, note) =>

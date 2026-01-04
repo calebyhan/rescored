@@ -31,12 +31,13 @@ class Settings(BaseSettings):
     gpu_enabled: bool = True
     max_video_duration: int = 900  # 15 minutes
 
-    # Transcription Configuration (basic-pitch)
-    onset_threshold: float = 0.3  # Note onset confidence (0-1). Lower = more notes detected
-    frame_threshold: float = 0.3  # Frame activation threshold (0-1). Basic-pitch default
-    minimum_note_length: int = 58  # Minimum note samples (~58ms at 44.1kHz). Basic-pitch default
-    minimum_frequency_hz: float = 65.0  # C2 (65 Hz) - filter low-frequency noise like F1
-    maximum_frequency_hz: float | None = None  # No upper limit for piano range
+    # Transcription Configuration (deprecated - kept for API compatibility)
+    # These were used by basic-pitch, which has been removed in favor of YourMT3+
+    onset_threshold: float = 0.3  # Deprecated
+    frame_threshold: float = 0.3  # Deprecated
+    minimum_note_length: int = 58  # Deprecated
+    minimum_frequency_hz: float = 65.0  # Deprecated
+    maximum_frequency_hz: float | None = None  # Deprecated
 
     # Tempo Detection Configuration
     tempo_detection_duration: int = 60  # Seconds of audio to analyze
@@ -66,7 +67,7 @@ class Settings(BaseSettings):
 
     # Feature Flags
     enable_envelope_analysis: bool = True
-    enable_tie_notation: bool = True
+    enable_tie_notation: bool = True  # Deprecated (was only used by old generate_musicxml)
 
     # Phase 2: Zero-Tradeoff Solutions
     # Python compatibility: madmom runtime patch enables Python 3.10+ support
@@ -74,10 +75,16 @@ class Settings(BaseSettings):
     use_beat_synchronous_quantization: bool = True  # Beat-aligned quantization (eliminates double quantization)
 
     # Transcription Service Configuration
-    use_yourmt3_transcription: bool = True  # YourMT3+ for 80-85% accuracy (default, falls back to basic-pitch)
+    use_yourmt3_transcription: bool = True  # Deprecated (always True now - YourMT3+ is only transcriber)
     transcription_service_url: str = "http://localhost:8000"  # Main API URL (YourMT3+ integrated)
     transcription_service_timeout: int = 300  # Timeout for transcription requests (seconds)
     yourmt3_device: str = _detect_device()  # Auto-detect device: 'cuda' (NVIDIA), 'mps' (Apple Silicon), or 'cpu'
+
+    # Source Separation Configuration
+    use_two_stage_separation: bool = True  # Use BS-RoFormer + Demucs for better quality (vs Demucs only)
+    transcribe_vocals: bool = True  # Transcribe vocal melody as violin
+    vocal_instrument: int = 40  # MIDI program number for vocals (40=Violin, 73=Flute, 65=Alto Sax)
+    use_6stem_demucs: bool = True  # Use 6-stem Demucs (piano, guitar, drums, bass, other) vs 4-stem
 
     # Grand Staff Configuration
     enable_grand_staff: bool = True  # Split piano into treble + bass clefs

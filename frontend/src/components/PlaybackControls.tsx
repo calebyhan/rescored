@@ -10,7 +10,7 @@ import { useState, useRef, useEffect } from 'react';
 import * as Tone from 'tone';
 // useNotationStore is optional for tests; guard its usage
 import { useNotationStore } from '../store/notation';
-import { durationToSeconds } from '../utils/musicxml-parser';
+import { durationToSeconds } from '../utils/duration';
 import type { Note } from '../store/notation';
 import './PlaybackControls.css';
 

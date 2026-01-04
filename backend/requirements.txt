@@ -18,11 +18,9 @@ scipy
 torch>=2.0.0
 torchaudio==2.1.0  # Pin to version that uses SoundFile backend, not torchcodec
 demucs>=3.0.6
+audio-separator>=0.40.0  # BS-RoFormer and UVR models for better vocal separation
 
-# Pitch detection (macOS default runtime is CoreML)
-basic-pitch==0.4.0  # Fallback transcriber when YourMT3+ service unavailable
-
-# YourMT3+ Transcription (integrated into main service)
+# YourMT3+ Transcription (primary transcriber)
 lightning>=2.2.1
 transformers==4.45.1
 einops>=0.7.0

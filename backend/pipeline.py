@@ -11,8 +11,7 @@ from typing import Optional
 import mido
 import librosa
 import numpy as np
-from basic_pitch.inference import predict_and_save
-from basic_pitch import ICASSP_2022_MODEL_PATH
+# basic-pitch removed - using YourMT3+ only
 from music21 import converter, key, meter, tempo, note, clef, stream, chord as m21_chord
 
 # Phase 2: Zero-tradeoff solutions with Python 3.10+ compatibility patch
@@ -91,13 +90,9 @@ class TranscriptionPipeline:
             self.final_midi_path = midi_path
 
             self.progress(90, "musicxml", "Generating MusicXML")
-            # Use minimal generator for YourMT3+, full generator for basic-pitch
-            if self.config.use_yourmt3_transcription:
-                print(f"   Using minimal MusicXML generation (YourMT3+)")
-                musicxml_path = self.generate_musicxml_minimal(midi_path, stems['other'])
-            else:
-                print(f"   Using full MusicXML generation (basic-pitch)")
-                musicxml_path = self.generate_musicxml(midi_path)
+            # Use minimal MusicXML generation (YourMT3+ optimized)
+            print(f"   Using minimal MusicXML generation (YourMT3+)")
+            musicxml_path = self.generate_musicxml_minimal(midi_path, stems['other'])
 
             self.progress(100, "complete", "Transcription complete")
             return musicxml_path
@@ -179,75 +174,23 @@ class TranscriptionPipeline:
         minimum_note_length: int = None
     ) -> Path:
         """
-        Transcribe audio to MIDI using basic-pitch.
+        Transcribe audio to MIDI using YourMT3+.
 
         Args:
             audio_path: Path to audio file (should be 'other' stem for piano)
-            onset_threshold: Note onset confidence (0-1). Higher = fewer false positives
-            frame_threshold: Frame activation threshold (0-1)
-            minimum_note_length: Minimum note duration in samples (~58ms at 44.1kHz)
+            onset_threshold: Deprecated (kept for API compatibility)
+            frame_threshold: Deprecated (kept for API compatibility)
+            minimum_note_length: Deprecated (kept for API compatibility)
 
         Returns:
             Path to generated MIDI file
         """
-        # Use config defaults if not specified
-        if onset_threshold is None:
-            onset_threshold = self.config.onset_threshold
-        if frame_threshold is None:
-            frame_threshold = self.config.frame_threshold
-        if minimum_note_length is None:
-            minimum_note_length = self.config.minimum_note_length
-
         output_dir = self.temp_dir
 
-        # === STEP 1: Try YourMT3+ first (primary transcriber) ===
-        use_yourmt3 = self.config.use_yourmt3_transcription
-        midi_path = None
-
-        if use_yourmt3:
-            try:
-                print(f"   Transcribing with YourMT3+ (primary transcriber)...")
-                midi_path = self.transcribe_with_yourmt3(audio_path)
-                print(f"   ✓ YourMT3+ transcription complete")
-            except Exception as e:
-                import traceback
-                print(f"   ⚠ YourMT3+ failed: {e}")
-                print(f"   Full error: {traceback.format_exc()}")
-                print(f"   → Falling back to basic-pitch")
-                midi_path = None
-
-        # === STEP 2: Fallback to basic-pitch if YourMT3+ failed or disabled ===
-        if midi_path is None:
-            print(f"   Transcribing with basic-pitch (onset={onset_threshold}, frame={frame_threshold})...")
-
-            # Run basic-pitch inference
-            # predict_and_save creates output files in the output directory
-            predict_and_save(
-                audio_path_list=[str(audio_path)],
-                output_directory=str(output_dir),
-                save_midi=True,
-                sonify_midi=False,  # Don't create audio
-                save_model_outputs=False,  # Don't save raw outputs
-                save_notes=False,  # Don't save CSV
-                model_or_model_path=ICASSP_2022_MODEL_PATH,
-                onset_threshold=onset_threshold,
-                frame_threshold=frame_threshold,
-                minimum_note_length=minimum_note_length,
-                minimum_frequency=self.config.minimum_frequency_hz,  # Filter low-frequency noise (F1)
-                maximum_frequency=self.config.maximum_frequency_hz,  # No upper limit
-                multiple_pitch_bends=False,
-                melodia_trick=True,  # Improves monophonic melody
-                debug_file=None
-            )
-
-            # basic-pitch saves as {audio_stem}_basic_pitch.mid
-            generated_bp_midi = output_dir / f"{audio_path.stem}_basic_pitch.mid"
-
-            if not generated_bp_midi.exists():
-                raise RuntimeError("basic-pitch did not create MIDI file")
-
-            midi_path = generated_bp_midi
-            print(f"   ✓ basic-pitch transcription complete")
+        # Transcribe with YourMT3+ (only transcription method)
+        print(f"   Transcribing with YourMT3+...")
+        midi_path = self.transcribe_with_yourmt3(audio_path)
+        print(f"   ✓ YourMT3+ transcription complete")
 
         # Rename final MIDI to standard name for post-processing
         final_midi_path = output_dir / "piano.mid"
@@ -1094,163 +1037,6 @@ class TranscriptionPipeline:
 
         return midi_path
 
-    def generate_musicxml(self, midi_path: Path) -> Path:
-        """
-        Convert MIDI to MusicXML with intelligent metadata detection and normalization.
-
-        New pipeline order (optimized):
-        1. Detect metadata from audio (tempo, time signature)
-        2. Parse MIDI
-        3. Detect key (ensemble)
-        4. Insert metadata
-        5. Deduplicate overlapping notes
-        6. Add clef
-        7. makeMeasures()
-        8. Normalize measure durations
-        9. Validate measures
-        10. Export MusicXML
-
-        Args:
-            midi_path: Path to input MIDI file
-
-        Returns:
-            Path to output MusicXML file
-        """
-        self.progress(92, "musicxml", "Detecting metadata from audio")
-
-        # Step 1: Detect metadata from audio BEFORE parsing MIDI
-        audio_path = self.temp_dir / "audio.wav"
-
-        if audio_path.exists():
-            # Detect tempo
-            detected_tempo, tempo_confidence = self.detect_tempo_from_audio(audio_path)
-
-            # Detect time signature (needs tempo)
-            time_sig_num, time_sig_denom, ts_confidence = self.detect_time_signature(
-                audio_path, detected_tempo
-            )
-        else:
-            # Fallback if audio not available
-            print("   WARNING: Audio file not found, using defaults")
-            detected_tempo, tempo_confidence = 120.0, 0.0
-            time_sig_num, time_sig_denom, ts_confidence = 4, 4, 0.0
-
-        self.progress(93, "musicxml", "Parsing MIDI")
-
-        # Step 2: Parse MIDI
-        score = converter.parse(midi_path)
-
-        self.progress(94, "musicxml", "Detecting key signature")
-
-        # Step 3: Detect key using ensemble methods
-        detected_key, key_confidence = self.detect_key_ensemble(score, audio_path)
-
-        self.progress(95, "musicxml", "Deduplicating overlapping notes")
-
-        # Step 4: Deduplicate overlapping notes (prevent polyphony issues)
-        score = self._deduplicate_overlapping_notes(score)
-
-        # Step 4.5: Merge sequential notes at music21 level (fixes Issue #8 - tiny rests)
-        # This fixes tiny rests from MIDI→music21 precision loss
-        # Increased from 0.02 to 0.08 to catch gaps created by quantization (125ms at 120 BPM)
-        self.progress(95, "musicxml", "Merging sequential notes")
-        score = self._merge_music21_notes(score, gap_threshold_qn=0.08)
-
-        # Step 5: Clean up any very short durations BEFORE makeMeasures
-        # This prevents music21 from creating impossible tuplets
-        for part in score.parts:
-            for element in part.flatten().notesAndRests:
-                if element.quarterLength < 0.0625:  # Shorter than 64th note
-                    element.quarterLength = 0.0625  # Round up to 64th note
-
-        self.progress(96, "musicxml", "Creating measures")
-
-        # Step 6: Create measures FIRST (required before grand staff split)
-        score = score.makeMeasures()
-
-        # Step 7: Split into grand staff (treble + bass clefs) if enabled
-        if self.config.enable_grand_staff:
-            print(f"   Splitting into grand staff (split at MIDI note {self.config.middle_c_split})...")
-            score = self._split_into_grand_staff(score)
-            print(f"   Created {len(score.parts)} staves (treble + bass)")
-
-            # Insert metadata into each part (grand staff creates new parts without metadata)
-            for part in score.parts:
-                # Get the first measure
-                measures = part.getElementsByClass('Measure')
-                if measures:
-                    first_measure = measures[0]
-                    # Insert key, time signature, and tempo into first measure
-                    first_measure.insert(0, tempo.MetronomeMark(number=detected_tempo))
-                    first_measure.insert(0, detected_key)
-                    first_measure.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
-        else:
-            # Single staff: add treble clef and metadata
-            for part in score.parts:
-                part.insert(0, clef.TrebleClef())
-                part.insert(0, detected_key)
-                part.insert(0, meter.TimeSignature(f'{time_sig_num}/{time_sig_denom}'))
-                part.insert(0, tempo.MetronomeMark(number=detected_tempo))
-                part.partName = "Piano"
-
-        # Step 7.5: Add tie notation for sustained notes across measure boundaries
-        if self.config.enable_tie_notation:
-            print("   Adding ties for sustained notes...")
-            score = self._add_ties_to_score(score)
-
-        self.progress(97, "musicxml", "Normalizing measure durations")
-
-        # Step 8: Remove impossible durations that makeMeasures created
-        score = self._remove_impossible_durations(score)
-
-        # Step 9: Fix tuplets with impossible durations
-        score = self._fix_tuplet_durations(score)
-
-        # Step 10: Normalize measure durations
-        score = self._normalize_measure_durations(score, time_sig_num, time_sig_denom)
-
-        # Step 10.5: Fix any NEW impossible tuplets created during normalization
-        # Normalization might add rests that music21 assigns tuplets to
-        score = self._fix_tuplet_durations(score)
-
-        # Step 11: Validate measures (logging only)
-        self._validate_measures(score)
-
-        self.progress(98, "musicxml", "Writing MusicXML file")
-
-        # Write MusicXML with proper error handling
-        output_path = self.temp_dir / f"{self.job_id}.musicxml"
-
-        try:
-            # Use makeNotation=False to prevent music21 from auto-generating tuplets
-            score.write('musicxml', fp=str(output_path), makeNotation=False)
-        except Exception as e:
-            error_msg = str(e)
-
-            # If still getting 2048th note errors after our normalization,
-            # it means music21 is creating them during export (not our fault)
-            if 'Cannot convert "2048th" duration to MusicXML' in error_msg or \
-               'Cannot convert "4096th" duration to MusicXML' in error_msg:
-
-                print(f"   ERROR: music21 generated impossible duration during export: {error_msg}")
-                print(f"   This is a music21 bug. Try re-running with different tempo/time signature.")
-
-                # Last resort: try exporting as MIDI instead
-                midi_fallback = self.temp_dir / f"{self.job_id}_fallback.mid"
-                score.write('midi', fp=str(midi_fallback))
-                print(f"   Created fallback MIDI export: {midi_fallback}")
-
-                raise RuntimeError(
-                    f"MusicXML export failed due to music21 bug. "
-                    f"MIDI fallback created at {midi_fallback}. "
-                    f"Original error: {error_msg}"
-                )
-            else:
-                # Different error, re-raise
-                raise
-
-        return output_path
-
     def generate_musicxml_minimal(self, midi_path: Path, source_audio: Path) -> Path:
         """
         Generate MusicXML from clean MIDI (YourMT3+ output) with minimal post-processing.
@@ -1387,298 +1173,9 @@ class TranscriptionPipeline:
         print(f"   ✓ MusicXML generation complete")
         return output_path
 
-    def _deduplicate_overlapping_notes(self, score) -> stream.Score:
-        """
-        Deduplicate overlapping notes from basic-pitch to prevent MusicXML corruption.
 
-        Problem: basic-pitch outputs multiple notes at the same timestamp for polyphonic detection.
-        When music21's makeMeasures() processes these, it creates measures with >4.0 beats.
 
-        Solution: Group simultaneous notes (within 10ms) into chords, merge duplicate pitches.
 
-        Args:
-            score: music21 Score object before makeMeasures()
-
-        Returns:
-            Cleaned score with deduplicated notes
-        """
-        from music21 import stream, note, chord as m21_chord
-        from collections import defaultdict
-
-        # Process each part
-        for part in score.parts:
-            # Collect all notes with their absolute offsets
-            notes_by_time = defaultdict(list)  # bucket -> [notes]
-
-            for element in part.flatten().notesAndRests:
-                if isinstance(element, note.Rest):
-                    continue  # Skip rests for deduplication
-
-                # Get absolute offset in quarter notes
-                offset_qn = element.offset
-
-                # Bucket notes that are within 0.005 quarter notes of each other (~5ms at 120 BPM)
-                # Finer resolution prevents chord notes from splitting into separate buckets
-                bucket = round(offset_qn / 0.005) * 0.005
-
-                if isinstance(element, note.Note):
-                    notes_by_time[bucket].append(element)
-                elif isinstance(element, m21_chord.Chord):
-                    # Explode chords into individual notes for deduplication
-                    for pitch in element.pitches:
-                        n = note.Note(pitch)
-                        n.quarterLength = element.quarterLength
-                        n.offset = element.offset
-                        notes_by_time[bucket].append(n)
-
-            # Rebuild part with deduplicated notes
-            new_part = stream.Part()
-
-            # Copy metadata (key, tempo, time signature will be added later)
-            new_part.id = part.id
-            new_part.partName = part.partName
-
-            for bucket_qn in sorted(notes_by_time.keys()):
-                bucket_notes = notes_by_time[bucket_qn]
-
-                if not bucket_notes:
-                    continue
-
-                # Group by pitch to remove duplicates
-                pitch_groups = defaultdict(list)
-                for n in bucket_notes:
-                    pitch_groups[n.pitch.midi].append(n)
-
-                # For each unique pitch, keep the note with longest duration
-                unique_notes = []
-                for midi_pitch, pitch_notes in pitch_groups.items():
-                    # Sort by duration (longest first)
-                    # Get velocity as integer for comparison (handle None values)
-                    def get_velocity(note):
-                        if hasattr(note, 'volume') and hasattr(note.volume, 'velocity'):
-                            vel = note.volume.velocity
-                            return vel if vel is not None else 64
-                        return 64
-
-                    pitch_notes.sort(key=lambda x: (x.quarterLength, get_velocity(x)), reverse=True)
-                    best_note = pitch_notes[0]
-
-                    # Filter out extremely short notes (< 64th note = 0.0625 quarter notes)
-                    # MusicXML can't handle notes shorter than 1024th
-                    if best_note.quarterLength >= 0.0625:
-                        unique_notes.append(best_note)
-
-                if not unique_notes:
-                    continue  # Skip if all notes were too short
-
-                # Use bucket quarter note offset directly
-                offset_qn = bucket_qn
-
-                if len(unique_notes) == 1:
-                    # Single note - snap duration to avoid impossible tuplets
-                    n = note.Note(unique_notes[0].pitch)
-                    n.quarterLength = self._snap_duration(unique_notes[0].quarterLength)
-                    new_part.insert(offset_qn, n)
-                elif len(unique_notes) > 1:
-                    # Multiple notes at same time -> create chord
-                    # Use the shortest duration to avoid overlaps, then snap
-                    min_duration = min(n.quarterLength for n in unique_notes)
-
-                    c = m21_chord.Chord([n.pitch for n in unique_notes])
-                    c.quarterLength = self._snap_duration(min_duration)
-                    new_part.insert(offset_qn, c)
-
-            # Replace old part with new part
-            score.replace(part, new_part)
-
-        return score
-
-    def _merge_music21_notes(self, score, gap_threshold_qn: float = 0.02) -> stream.Score:
-        """
-        Merge sequential notes of same pitch with small gaps at music21 level.
-
-        Fixes tiny rests created by makeMeasures() from MIDI→music21 precision loss.
-        MUST run AFTER deduplication but BEFORE makeMeasures.
-
-        Args:
-            score: music21 Score (before makeMeasures)
-            gap_threshold_qn: Max gap to merge (0.02 QN ≈ 20ms @ 120 BPM)
-
-        Returns:
-            Score with merged sequential notes
-        """
-        from music21 import stream, note, chord as m21_chord
-        from collections import defaultdict
-
-        for part in score.parts:
-            # Collect all notes with timing
-            elements_with_offsets = []
-
-            for element in part.flatten().notesAndRests:
-                if isinstance(element, note.Rest):
-                    continue
-
-                offset_qn = element.offset
-                duration_qn = element.quarterLength
-
-                if isinstance(element, note.Note):
-                    elements_with_offsets.append({
-                        'offset': offset_qn,
-                        'end': offset_qn + duration_qn,
-                        'pitch': element.pitch.midi,
-                        'element': element
-                    })
-                elif isinstance(element, m21_chord.Chord):
-                    # Track each chord pitch separately
-                    for pitch in element.pitches:
-                        elements_with_offsets.append({
-                            'offset': offset_qn,
-                            'end': offset_qn + duration_qn,
-                            'pitch': pitch.midi,
-                            'element': element,
-                            'chord_id': id(element)  # Prevent merging same-chord notes
-                        })
-
-            # Group by pitch and sort
-            notes_by_pitch = defaultdict(list)
-            for elem in elements_with_offsets:
-                notes_by_pitch[elem['pitch']].append(elem)
-
-            for pitch in notes_by_pitch:
-                notes_by_pitch[pitch].sort(key=lambda x: x['offset'])
-
-            # Track modifications
-            elements_to_remove = set()
-            duration_updates = {}
-
-            # Merge within each pitch group
-            for pitch, note_list in notes_by_pitch.items():
-                i = 0
-                while i < len(note_list):
-                    current = note_list[i]
-
-                    # Look ahead for mergeable notes
-                    j = i + 1
-                    while j < len(note_list):
-                        next_note = note_list[j]
-                        gap = next_note['offset'] - current['end']
-
-                        if gap <= gap_threshold_qn:
-                            # Don't merge notes from SAME chord
-                            if ('chord_id' in current and 'chord_id' in next_note and
-                                current['chord_id'] == next_note['chord_id']):
-                                break
-
-                            # Extend current to cover gap + next note
-                            new_end = next_note['end']
-                            new_duration = new_end - current['offset']
-
-                            duration_updates[id(current['element'])] = new_duration
-                            current['end'] = new_end
-
-                            elements_to_remove.add(id(next_note['element']))
-                            j += 1
-                        else:
-                            break
-
-                    i = j if j > i + 1 else i + 1
-
-            # Rebuild part with modifications
-            new_part = stream.Part()
-            new_part.id = part.id
-            new_part.partName = part.partName
-
-            for element in part.flatten().notesAndRests:
-                elem_id = id(element)
-
-                if elem_id in elements_to_remove:
-                    continue
-
-                if elem_id in duration_updates:
-                    element.quarterLength = duration_updates[elem_id]
-
-                new_part.insert(element.offset, element)
-
-            score.replace(part, new_part)
-
-        return score
-
-    def _add_ties_to_score(self, score) -> stream.Score:
-        """
-        Add tie notation to notes that span measure boundaries.
-
-        Uses music21's tie.Tie class:
-        - 'start': Beginning of tied note
-        - 'stop': End of tied note
-
-        Args:
-            score: music21 Score object
-
-        Returns:
-            Score with tie notation added
-        """
-        from music21 import tie
-
-        for part in score.parts:
-            measures = list(part.getElementsByClass('Measure'))
-
-            # Get time signature to determine expected measure length
-            ts = part.getElementsByClass('TimeSignature')
-            expected_measure_length = ts[0].barDuration.quarterLength if ts else 4.0
-
-            for measure_idx, measure in enumerate(measures):
-                # Get the time signature for this measure if it changed
-                measure_ts = measure.getElementsByClass('TimeSignature')
-                if measure_ts:
-                    expected_measure_length = measure_ts[0].barDuration.quarterLength
-
-                for element in measure.notesAndRests:
-                    if not isinstance(element, note.Note):
-                        continue
-
-                    # Check if note extends beyond measure boundary
-                    # Use expected_measure_length from time signature, not barDuration
-                    # which may have been auto-expanded by music21
-                    element_end = element.offset + element.quarterLength
-
-                    if element_end > expected_measure_length + 0.01:  # Tolerance for floating point
-                        # Note crosses boundary - add 'start' tie
-                        element.tie = tie.Tie('start')
-
-                        # Find continuation in next measure and add 'stop' tie
-                        if measure_idx + 1 < len(measures):
-                            next_measure = measures[measure_idx + 1]
-                            for next_elem in next_measure.notesAndRests:
-                                if (isinstance(next_elem, note.Note) and
-                                    next_elem.pitch.midi == element.pitch.midi and
-                                    next_elem.offset < 0.1):  # At start of measure
-                                    next_elem.tie = tie.Tie('stop')
-                                    break
-
-        return score
-
-    def _snap_duration(self, duration) -> float:
-        """
-        Snap duration to nearest MusicXML-valid note value to avoid impossible tuplets.
-
-        Valid durations: whole (4.0), half (2.0), quarter (1.0), eighth (0.5),
-        sixteenth (0.25), thirty-second (0.125), sixty-fourth (0.0625)
-
-        Args:
-            duration: Quarter length as float or Fraction
-
-        Returns:
-            Snapped quarter length
-        """
-        valid_durations = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.0625]
-
-        # Convert to float for comparison
-        dur_float = float(duration)
-
-        # Find nearest valid duration
-        nearest = min(valid_durations, key=lambda x: abs(x - dur_float))
-
-        return nearest
 
     def _snap_to_valid_duration(self, duration: float) -> float:
         """
@@ -1708,73 +1205,6 @@ class TranscriptionPipeline:
 
         return nearest
 
-    def _normalize_measure_durations(self, score, time_sig_numerator: int = 4, time_sig_denominator: int = 4) -> stream.Score:
-        """
-        Normalize note durations to fit measures, using detected time signature.
-
-        Instead of removing notes, adjust durations to fill measures correctly.
-
-        Args:
-            score: music21 Score with measures
-            time_sig_numerator: Detected time signature numerator
-            time_sig_denominator: Detected time signature denominator
-
-        Returns:
-            Normalized score
-        """
-        expected_duration = (time_sig_numerator / time_sig_denominator) * 4.0  # Quarter notes
-
-        for part in score.parts:
-            for measure in part.getElementsByClass('Measure'):
-                # Get all notes and chords
-                elements = list(measure.notesAndRests)
-
-                if not elements:
-                    continue
-
-                # Calculate actual duration
-                actual_duration = sum(e.quarterLength for e in elements)
-
-                # Increased tolerance from 0.05 to 0.15 QN (150ms at 120 BPM)
-                # Prevents normalizing "good enough" measures that get made worse by rounding
-                if abs(actual_duration - expected_duration) < 0.15:
-                    continue  # Already correct (allow tolerance for quantization errors)
-
-                # Normalize durations proportionally
-                scale_factor = expected_duration / actual_duration if actual_duration > 0 else 1.0
-
-                for element in elements:
-                    # Scale duration
-                    new_duration = element.quarterLength * scale_factor
-
-                    # Snap to valid music21 duration
-                    element.quarterLength = self._snap_to_valid_duration(new_duration)
-
-                # Verify total duration after normalization
-                new_total = sum(e.quarterLength for e in measure.notesAndRests)
-
-                if abs(new_total - expected_duration) > 0.1:
-                    gap = expected_duration - new_total
-
-                    if gap > 0.01:
-                        # Underfull - add rest to fill
-                        rest = note.Rest(quarterLength=gap)
-                        measure.append(rest)
-                    elif gap < -0.01:
-                        # Overfull - proportionally adjust all elements (ZERO data loss)
-                        # This is better than removing notes
-                        overage = -gap
-                        elements = list(measure.notesAndRests)
-
-                        print(f"   WARNING: Measure overfull by {overage:.3f} QN, adjusting durations proportionally")
-
-                        # Proportionally reduce all durations
-                        reduction_factor = expected_duration / new_total
-
-                        for elem in elements:
-                            elem.quarterLength = self._snap_to_valid_duration(elem.quarterLength * reduction_factor)
-
-        return score
 
     def _validate_and_adjust_metadata(
         self,
@@ -2055,93 +1485,7 @@ class TranscriptionPipeline:
 
         return score
 
-    def _fix_tuplet_durations(self, score) -> stream.Score:
-        """
-        Simplify all durations to prevent music21 from creating impossible tuplets during export.
 
-        music21 creates tuplets on-the-fly during MusicXML export when durations don't
-        fit standard values. By rounding all durations to simple fractions, we prevent
-        the export logic from generating 2048th note tuplets.
-
-        Args:
-            score: music21 Score with measures
-
-        Returns:
-            Cleaned score with simplified durations
-        """
-        from music21 import note, chord, stream, duration
-
-        simplified_count = 0
-
-        # Simple durations that don't trigger tuplet creation (in quarter notes)
-        SIMPLE_DURATIONS = [
-            4.0,     # Whole note
-            3.0,     # Dotted half
-            2.0,     # Half note
-            1.5,     # Dotted quarter
-            1.0,     # Quarter note
-            0.75,    # Dotted eighth
-            0.5,     # Eighth note
-            0.375,   # Dotted 16th
-            0.25,    # 16th note
-            0.125,   # 32nd note (CRITICAL: was missing, caused durations to double!)
-            0.0625,  # 64th note
-            0.03125, # 128th note
-        ]
-
-        for part in score.parts:
-            for measure in part.getElementsByClass('Measure'):
-                # Process all notes, rests, and chords
-                for element in measure.notesAndRests:
-                    original_duration = element.quarterLength
-
-                    # Round to nearest simple duration
-                    nearest_duration = min(SIMPLE_DURATIONS, key=lambda x: abs(x - original_duration))
-
-                    if abs(original_duration - nearest_duration) > 0.01:
-                        element.quarterLength = nearest_duration
-                        simplified_count += 1
-
-                    # Strip any tuplets that might exist
-                    if element.duration.tuplets:
-                        element.duration.tuplets = ()
-
-                    # For chords, also process each note within
-                    if isinstance(element, chord.Chord):
-                        for n in element.notes:
-                            if n.duration.tuplets:
-                                n.duration.tuplets = ()
-
-        if simplified_count > 0:
-            print(f"   Simplified {simplified_count} durations to prevent tuplet creation during export")
-
-        return score
-
-    def _validate_measures(self, score) -> None:
-        """
-        Validate that all measures have correct durations matching their time signature.
-
-        Logs warnings for any measures that are overfull or underfull.
-
-        Args:
-            score: music21 Score with measures already created
-        """
-        for part_idx, part in enumerate(score.parts):
-            for measure_idx, measure in enumerate(part.getElementsByClass('Measure')):
-                # Get time signature for this measure
-                ts = measure.timeSignature or measure.getContextByClass('TimeSignature')
-                if not ts:
-                    continue  # Skip if no time signature
-
-                expected_duration = ts.barDuration.quarterLength
-                actual_duration = measure.duration.quarterLength
-
-                # Allow small floating-point tolerance (0.01 quarter notes = ~10ms at 120 BPM)
-                tolerance = 0.01
-
-                if abs(actual_duration - expected_duration) > tolerance:
-                    print(f"WARNING: Measure {measure_idx + 1} in part {part_idx} has duration {float(actual_duration):.2f} "
-                          f"(expected {float(expected_duration):.2f} for {ts.ratioString} time)")
 
     def _split_into_grand_staff(self, score) -> stream.Score:
         """
@@ -2740,7 +2084,10 @@ def remove_short_notes(midi_path: Path, min_duration: int = 60) -> Path:
 def generate_musicxml(midi_path: Path, storage_path: Path) -> Path:
     """Generate MusicXML from MIDI (module-level wrapper)."""
     pipeline = TranscriptionPipeline("compat_job", "http://example.com", storage_path)
-    return pipeline.generate_musicxml(midi_path)
+    # Use minimal pipeline (YourMT3+ optimized)
+    # Note: source_audio path may not exist for module-level calls, but minimal pipeline can handle it
+    audio_path = storage_path / "temp" / "compat_job" / "audio.wav"
+    return pipeline.generate_musicxml_minimal(midi_path, audio_path)
 
 
 def detect_key_signature(midi_path: Path) -> dict:

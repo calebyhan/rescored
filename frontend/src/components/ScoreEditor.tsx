@@ -1,11 +1,13 @@
 /**
  * Main score editor component integrating notation, playback, and export.
+ * Supports multi-instrument transcription.
  */
 import { useState, useEffect } from 'react';
-import { getMidiFile, getMetadata } from '../api/client';
+import { getMidiFile, getMetadata, getJobStatus } from '../api/client';
 import { useNotationStore } from '../store/notation';
 import { NotationCanvas } from './NotationCanvas';
 import { PlaybackControls } from './PlaybackControls';
+import { InstrumentTabs } from './InstrumentTabs';
 import './ScoreEditor.css';
 
 interface ScoreEditorProps {
@@ -15,7 +17,11 @@ interface ScoreEditorProps {
 export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [instruments, setInstruments] = useState<string[]>([]);
+
   const loadFromMidi = useNotationStore((state) => state.loadFromMidi);
+  const activeInstrument = useNotationStore((state) => state.activeInstrument);
+  const setActiveInstrument = useNotationStore((state) => state.setActiveInstrument);
 
   useEffect(() => {
     loadScore();
@@ -26,18 +32,34 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       setLoading(true);
       setError(null);
 
-      // Fetch MIDI file and metadata in parallel
-      const [midiData, metadata] = await Promise.all([
-        getMidiFile(jobId),
-        getMetadata(jobId),
-      ]);
+      // Get job status to find which instruments were transcribed
+      const jobStatus = await getJobStatus(jobId);
 
-      // Load MIDI into notation store
-      await loadFromMidi(midiData, {
-        tempo: metadata.tempo,
-        keySignature: metadata.key_signature,
-        timeSignature: metadata.time_signature,
-      });
+      // For now, assume piano is the default instrument (backend doesn't yet return instruments list)
+      // TODO: Update when backend API returns instruments list in job status
+      const transcribedInstruments = ['piano'];
+      setInstruments(transcribedInstruments);
+
+      // Fetch metadata once (shared across all instruments)
+      const metadata = await getMetadata(jobId);
+
+      // Load MIDI files for each instrument
+      for (const instrument of transcribedInstruments) {
+        // For MVP, backend only supports piano (single stem)
+        // In the future, this will fetch per-instrument MIDI: `/api/v1/scores/${jobId}/midi/${instrument}`
+        const midiData = await getMidiFile(jobId);
+
+        await loadFromMidi(instrument, midiData, {
+          tempo: metadata.tempo,
+          keySignature: metadata.key_signature,
+          timeSignature: metadata.time_signature,
+        });
+      }
+
+      // Set first instrument as active
+      if (transcribedInstruments.length > 0) {
+        setActiveInstrument(transcribedInstruments[0]);
+      }
 
       setLoading(false);
     } catch (err) {
@@ -88,10 +110,15 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       <div className="editor-toolbar">
         <h2>Score Editor</h2>
         <div className="toolbar-actions">
-          <button onClick={handleExportMusicXML}>Export MusicXML</button>
           <button onClick={handleExportMIDI}>Export MIDI</button>
         </div>
       </div>
+
+      <InstrumentTabs
+        instruments={instruments}
+        activeInstrument={activeInstrument}
+        onInstrumentChange={setActiveInstrument}
+      />
 
       <PlaybackControls />
 
