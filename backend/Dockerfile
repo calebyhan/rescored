@@ -6,10 +6,17 @@ RUN apt-get update && apt-get install -y \
     git \
     gcc \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
 # Set working directory
 WORKDIR /app
+
+# Enable glibc DNS retry mechanism (fixes transient DNS resolution failures in containers)
+ENV RES_OPTIONS="single-request-reopen"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONUNBUFFERED=1
 
 # Copy requirements
 COPY requirements.txt .
