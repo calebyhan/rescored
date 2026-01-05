@@ -1,0 +1,20 @@
+{
+  "projectName": "rescored",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "cd frontend && npm install --legacy-peer-deps",
+  "framework": "vite",
+  "env": {
+    "VITE_API_URL": {
+      "description": "Backend API URL (HF Spaces URL)",
+      "example": "https://yourusername-rescored.hf.space"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/api/:path*",
+      "destination": "${VITE_API_URL}/api/:path*",
+      "permanent": false
+    }
+  ]
+}

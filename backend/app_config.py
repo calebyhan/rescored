@@ -125,7 +125,9 @@ class Settings(BaseSettings):
     minimum_note_duration_qn: float = 0.0625  # Minimum note duration (64th note)
 
     # CORS Configuration
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    # Default supports local dev + Vercel + HF Spaces
+    # Format: comma-separated list of allowed origins
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://localhost,https://*.vercel.app,https://*.hf.space"
 
     class Config:
         env_file = ".env"

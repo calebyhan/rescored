@@ -106,6 +106,15 @@ async def startup_event():
     """Initialize YourMT3+ model on startup."""
     global yourmt3_transcriber
 
+    # Log deployment info
+    print("\n" + "="*60)
+    print("🎵 Rescored Backend Started")
+    print("="*60)
+    print(f"Device: {settings.yourmt3_device}")
+    print(f"CORS Origins: {', '.join(settings.cors_origins_list)}")
+    print(f"Redis: {settings.redis_url}")
+    print("="*60 + "\n")
+
     if not YOURMT3_AVAILABLE or not settings.use_yourmt3_transcription:
         print("YourMT3+ transcription disabled or unavailable")
         return

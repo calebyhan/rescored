@@ -2,6 +2,14 @@
 
 Convert YouTube videos into editable sheet music using AI.
 
+## 🚀 Live Demo
+
+**Frontend**: https://your-project.vercel.app  
+**Backend API**: https://calebhan-rescored.hf.space  
+**Status**: ✅ Running (Free tier - 15-20 min transcription time)
+
+See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for deployment guides.
+
 ## Overview
 
 Rescored transcribes YouTube videos to professional-quality music notation:
@@ -174,6 +182,9 @@ YouTube requires authentication for video downloads (as of December 2024). You *
 Use the provided shell scripts to start/stop all services at once:
 
 ```bash
+# Make sure nothing is running
+./stop.sh
+
 # Start all services (backend API, Celery worker, frontend)
 ./start.sh
 ```
@@ -459,18 +470,53 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- **YourMT3+** (KAIST) - State-of-the-art music transcription ([Paper](https://arxiv.org/abs/2407.04822))
-- **Demucs** (Meta AI Research) - Source separation
-- **basic-pitch** (Spotify) - Fallback audio transcription
-- **VexFlow** - Music notation rendering
-- **Tone.js** - Web audio synthesis
+### ML Models & Audio Processing
+- **YourMT3+** (KAIST) - Multi-instrument music transcription ([Paper](https://arxiv.org/abs/2407.04822))
+- **ByteDance Piano Transcription** - Piano-specific CNN+BiGRU model ([GitHub](https://github.com/bytedance/piano_transcription))
+- **BS-RoFormer** - Vocal removal for cleaner separation ([GitHub](https://github.com/ZFTurbo/Music-Source-Separation-Training))
+- **Demucs** (Meta AI Research) - 6-stem audio source separation ([Paper](https://arxiv.org/abs/2111.03600))
+- **audio-separator** - BS-RoFormer wrapper and audio processing utilities
+
+### Music Processing Libraries
+- **music21** (MIT) - MusicXML generation and music theory analysis
+- **librosa** - Audio preprocessing and feature extraction
+- **madmom** - Beat tracking and tempo detection
+- **pretty_midi** - MIDI file manipulation
+
+### Frontend Libraries
+- **VexFlow** - Music notation rendering in SVG/Canvas
+- **Tone.js** - Web audio synthesis and playback
 
 ## Roadmap
 
-- **Phase 1 (MVP)**: ✅ Piano transcription with basic editing
-- **Phase 2**: Multi-instrument, advanced editing, PDF export
-- **Phase 3**: User accounts, cloud storage, collaboration
-- **Phase 4**: Mobile app, real-time collaboration
+### ✅ Phase 1 (Completed)
+- Piano transcription with 90% accuracy (ensemble voting)
+- Two-stage source separation (BS-RoFormer + Demucs)
+- Audio preprocessing pipeline
+- Post-processing filters (confidence + key-aware)
+- Vocal transcription support (piano + vocals)
+- Basic editing capabilities
+- MusicXML export
+- Test suite (59 tests, 27% coverage)
+
+### Phase 2 (Future)
+- Multi-instrument transcription beyond piano+vocals
+- Grand staff notation (treble + bass)
+- Advanced editing (copy/paste, undo/redo, multi-select)
+- MIDI export improvements
+- PDF export
+- Articulations and dynamics
+
+### Phase 3 (Future)
+- User accounts and authentication
+- Cloud storage integration
+- Job history and saved transcriptions
+- Collaboration features
+
+### Phase 4 (Future)
+- Mobile app (iOS/Android)
+- Real-time collaboration
+- API for third-party integrations
 
 ---
 
