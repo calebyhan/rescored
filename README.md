@@ -15,12 +15,10 @@ Convert YouTube videos into editable sheet music using AI.
 
 ## 🚀 Deployment
 
-**Status**: Backend deploying to HF Spaces, frontend ready to deploy to Vercel
+**Status**: Live and operational!
 
-See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for step-by-step deployment guides.
-
-- Backend: https://calebhan-rescored.hf.space (building, 5-10 min)
-- Frontend: Deploy via Vercel (2 min setup)
+- Backend: https://calebhan-rescored.hf.space
+- Frontend: https://rescored.vercel.app
 
 ## Overview
 

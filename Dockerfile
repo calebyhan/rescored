@@ -34,13 +34,17 @@ RUN mkdir -p /app/storage && chmod 777 /app/storage
 # Expose HF Spaces port
 EXPOSE 7860
 
+# Set working directory to backend
+WORKDIR /app/backend
+
 # Set environment for HF Spaces
 ENV API_PORT=7860
 ENV API_HOST=0.0.0.0
+ENV PYTHONPATH=/app/backend
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
 # Start FastAPI server
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
