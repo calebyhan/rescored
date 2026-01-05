@@ -25,9 +25,12 @@ COPY . .
 RUN git lfs pull 2>/dev/null || echo "Git LFS files skipped (may be pre-downloaded)"
 
 # Install Python dependencies
-RUN pip install --no-cache-dir Cython 'numpy<2.0.0' 'scipy<1.14.0'
-RUN pip install --no-cache-dir fakeredis mir_eval
+# Force numpy<2 first to prevent numpy 2.x from being installed
+RUN pip install --no-cache-dir 'numpy<2.0.0' 'scipy<1.14.0' Cython
+RUN pip install --no-cache-dir 'fakeredis[lua]' mir_eval
 RUN pip install --no-cache-dir -r backend/requirements.txt
+# Re-install numpy<2 to override any upgrades from requirements.txt
+RUN pip install --no-cache-dir --force-reinstall 'numpy<2.0.0'
 
 # Create storage directory
 RUN mkdir -p /app/storage && chmod 777 /app/storage
@@ -42,7 +45,7 @@ WORKDIR /app/backend
 ENV API_PORT=7860
 ENV API_HOST=0.0.0.0
 ENV PYTHONPATH=/app/backend
-ENV REDIS_URL=fakeredis://localhost:6379/0
+ENV USE_FAKE_REDIS=true
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

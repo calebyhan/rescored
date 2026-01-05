@@ -13,6 +13,7 @@ import json
 import asyncio
 import tempfile
 import shutil
+import os
 from typing import Optional
 from app_config import settings
 from app_utils import validate_youtube_url, check_video_availability
@@ -34,10 +35,15 @@ app = FastAPI(
 )
 
 # Redis client (initialized before middleware)
-redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
-
-# Async Redis client for WebSocket pub/sub
-async_redis_client = redis.asyncio.Redis.from_url(settings.redis_url, decode_responses=True)
+# Use fakeredis if USE_FAKE_REDIS environment variable is set
+if os.getenv('USE_FAKE_REDIS', '').lower() == 'true':
+    import fakeredis
+    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
+    async_redis_client = fakeredis.FakeAsyncRedis(decode_responses=True)
+    print("Using fakeredis for in-memory caching")
+else:
+    redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    async_redis_client = redis.asyncio.Redis.from_url(settings.redis_url, decode_responses=True)
 
 # YourMT3+ transcriber (loaded on startup)
 yourmt3_transcriber: Optional[YourMT3Transcriber] = None

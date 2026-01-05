@@ -4,13 +4,19 @@ from celery_app import celery_app
 from pipeline import TranscriptionPipeline, run_transcription_pipeline
 import redis
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from app_config import settings
 import shutil
 
-# Redis client
-redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+# Redis client - use fakeredis if USE_FAKE_REDIS is set
+if os.getenv('USE_FAKE_REDIS', '').lower() == 'true':
+    import fakeredis
+    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
+    print("Using fakeredis for in-memory caching")
+else:
+    redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 class TranscriptionTask(Task):
