@@ -5,7 +5,7 @@ colorFrom: purple
 colorTo: blue
 sdk: docker
 sdk_version: latest
-app_file: null
+app_file: backend/app.py
 pinned: false
 ---
 
