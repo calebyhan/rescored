@@ -1,14 +1,26 @@
+---
+title: Rescored
+emoji: 🎵
+colorFrom: purple
+colorTo: blue
+sdk: docker
+sdk_version: latest
+app_file: null
+pinned: false
+---
+
 # Rescored - AI Music Transcription
 
 Convert YouTube videos into editable sheet music using AI.
 
-## 🚀 Live Demo
+## 🚀 Deployment
 
-**Frontend**: https://your-project.vercel.app  
-**Backend API**: https://calebhan-rescored.hf.space  
-**Status**: ✅ Running (Free tier - 15-20 min transcription time)
+**Status**: Backend deploying to HF Spaces, frontend ready to deploy to Vercel
 
-See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for deployment guides.
+See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for step-by-step deployment guides.
+
+- Backend: https://calebhan-rescored.hf.space (building, 5-10 min)
+- Frontend: Deploy via Vercel (2 min setup)
 
 ## Overview
 
