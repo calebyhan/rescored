@@ -145,6 +145,8 @@ class TranscriptionPipeline:
             "--audio-format", "wav",
             "--audio-quality", "0",  # Best quality
             "--output", str(output_path.with_suffix('')),  # yt-dlp adds .wav
+            "--force-ipv4",  # Force IPv4 to avoid DNS issues
+            "--socket-timeout", "30",
             # Workarounds for YouTube restrictions
             "--extractor-args", "youtube:player_client=android,web",
             "--no-check-certificates",

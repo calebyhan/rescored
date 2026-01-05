@@ -47,6 +47,8 @@ def check_video_availability(video_id: str, max_duration: int = 900) -> dict:
         'quiet': True,
         'no_warnings': True,
         'extract_flat': True,
+        'force_ipv4': True,  # Force IPv4 to avoid DNS issues
+        'socket_timeout': 30,
     }
 
     try:
