@@ -139,6 +139,7 @@ class TranscriptionPipeline:
         """Download audio from YouTube URL using yt-dlp."""
         output_path = self.temp_dir / "audio.wav"
 
+        # Try with different extractors and network options
         cmd = [
             "yt-dlp",
             "-x",  # Extract audio
@@ -147,17 +148,22 @@ class TranscriptionPipeline:
             "--output", str(output_path.with_suffix('')),  # yt-dlp adds .wav
             "--force-ipv4",  # Force IPv4 to avoid DNS issues
             "--socket-timeout", "30",
-            "--source-address", "0.0.0.0",  # Bind to all interfaces
-            "--legacy-server-connect",  # Use legacy connection method
-            # Workarounds for YouTube restrictions
-            "--extractor-args", "youtube:player_client=android,web",
+            "--retries", "10",
+            "--fragment-retries", "10",
+            # Try alternative extractors
+            "--extractor-args", "youtube:player_client=android,ios,web",
             "--no-check-certificates",
+            # Add verbose output for debugging
+            "--verbose",
             self.youtube_url
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
+            # Log the full error for debugging
+            print(f"yt-dlp stderr: {result.stderr}")
+            print(f"yt-dlp stdout: {result.stdout}")
             raise RuntimeError(f"yt-dlp failed: {result.stderr}")
 
         if not output_path.exists():

@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     ca-certificates \
+    dnsutils \
+    iputils-ping \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,6 +38,10 @@ RUN pip install --no-cache-dir --force-reinstall 'numpy<2.0.0'
 # Create storage directory
 RUN mkdir -p /app/storage && chmod 777 /app/storage
 
+# Copy and make startup script executable
+COPY start-backend.sh /app/start-backend.sh
+RUN chmod +x /app/start-backend.sh
+
 # Expose HF Spaces port
 EXPOSE 7860
 
@@ -52,5 +58,5 @@ ENV USE_FAKE_REDIS=true
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-# Start FastAPI server
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Start with diagnostic script
+CMD ["/app/start-backend.sh"]
