@@ -26,6 +26,7 @@ RUN git lfs pull 2>/dev/null || echo "Git LFS files skipped (may be pre-download
 
 # Install Python dependencies
 RUN pip install --no-cache-dir Cython 'numpy<2.0.0' 'scipy<1.14.0'
+RUN pip install --no-cache-dir fakeredis mir_eval
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Create storage directory
@@ -41,6 +42,7 @@ WORKDIR /app/backend
 ENV API_PORT=7860
 ENV API_HOST=0.0.0.0
 ENV PYTHONPATH=/app/backend
+ENV REDIS_URL=fakeredis://localhost:6379/0
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
