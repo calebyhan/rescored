@@ -1,9 +1,5 @@
 FROM python:3.10-slim
 
-# Configure DNS for HF Spaces
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
 # Install system dependencies including ffmpeg and git-lfs
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -14,8 +10,7 @@ RUN apt-get update && apt-get install -y \
     make \
     build-essential \
     curl \
-    dnsutils \
-    iputils-ping \
+    ca-certificates \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 

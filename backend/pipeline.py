@@ -147,6 +147,8 @@ class TranscriptionPipeline:
             "--output", str(output_path.with_suffix('')),  # yt-dlp adds .wav
             "--force-ipv4",  # Force IPv4 to avoid DNS issues
             "--socket-timeout", "30",
+            "--source-address", "0.0.0.0",  # Bind to all interfaces
+            "--legacy-server-connect",  # Use legacy connection method
             # Workarounds for YouTube restrictions
             "--extractor-args", "youtube:player_client=android,web",
             "--no-check-certificates",
