@@ -11,11 +11,21 @@ from celery import Celery
 from kombu import Exchange, Queue
 from app_config import settings
 
+# Determine broker and backend based on configuration
+if settings.use_fake_redis:
+    # Use in-memory broker for development/HF Spaces
+    broker_url = "memory://"
+    backend_url = "cache+memory://"
+else:
+    # Use Redis for production
+    broker_url = settings.redis_url
+    backend_url = settings.redis_url
+
 # Initialize Celery
 celery_app = Celery(
     "rescored",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=broker_url,
+    backend=backend_url,
 )
 
 # Configuration

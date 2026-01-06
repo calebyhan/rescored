@@ -6,6 +6,7 @@ python-multipart==0.0.20
 # Task Queue
 celery==5.4.0
 redis==5.2.1
+fakeredis[aioredis]>=2.20.0  # In-memory Redis for development/HF Spaces
 
 # Audio Processing
 yt-dlp>=2025.12.8

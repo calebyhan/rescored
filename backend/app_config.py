@@ -17,7 +17,8 @@ def _detect_device() -> str:
 class Settings(BaseSettings):
     """Application settings."""
 
-    # Redis Configuration
+    # Redis Configuration (uses fakeredis on HF Spaces/development)
+    use_fake_redis: bool = True  # Set to False in production with real Redis
     redis_url: str = "redis://localhost:6379/0"
 
     # Storage Configuration
