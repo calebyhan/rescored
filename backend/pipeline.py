@@ -573,14 +573,29 @@ class TranscriptionPipeline:
                 bytedance_transcriber=bytedance,
                 voting_strategy=self.config.ensemble_voting_strategy,
                 onset_tolerance_ms=self.config.ensemble_onset_tolerance_ms,
-                confidence_threshold=self.config.ensemble_confidence_threshold
+                confidence_threshold=self.config.ensemble_confidence_threshold,
+                use_bytedance_confidence=self.config.use_bytedance_confidence
             )
 
-            # Transcribe with ensemble
+            # Transcribe with ensemble (with optional TTA)
             output_dir = self.temp_dir / "ensemble_output"
             output_dir.mkdir(exist_ok=True)
 
-            midi_path = ensemble.transcribe(audio_path, output_dir)
+            # Build TTA config from settings
+            tta_config = {
+                'augmentations': self.config.tta_augmentations,
+                'pitch_shifts': self.config.tta_pitch_shifts,
+                'time_stretches': self.config.tta_time_stretches,
+                'min_votes': self.config.tta_min_votes,
+                'onset_tolerance_ms': self.config.tta_onset_tolerance_ms
+            } if self.config.enable_tta else None
+
+            midi_path = ensemble.transcribe(
+                audio_path,
+                output_dir,
+                use_tta=self.config.enable_tta,
+                tta_config=tta_config
+            )
 
             print(f"   ✓ Ensemble transcription complete")
             return midi_path

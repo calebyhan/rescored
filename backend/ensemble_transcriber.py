@@ -49,7 +49,8 @@ class EnsembleTranscriber:
         bytedance_transcriber,
         voting_strategy: Literal['weighted', 'intersection', 'union', 'majority'] = 'weighted',
         onset_tolerance_ms: int = 50,
-        confidence_threshold: float = 0.6
+        confidence_threshold: float = 0.6,
+        use_bytedance_confidence: bool = True
     ):
         """
         Initialize ensemble transcriber.
@@ -60,17 +61,21 @@ class EnsembleTranscriber:
             voting_strategy: How to combine predictions
             onset_tolerance_ms: Time window for matching notes (milliseconds)
             confidence_threshold: Minimum confidence for 'weighted' strategy
+            use_bytedance_confidence: Use ByteDance frame-level confidence scores
         """
         self.yourmt3 = yourmt3_transcriber
         self.bytedance = bytedance_transcriber
         self.voting_strategy = voting_strategy
         self.onset_tolerance = onset_tolerance_ms / 1000.0  # Convert to seconds
         self.confidence_threshold = confidence_threshold
+        self.use_bytedance_confidence = use_bytedance_confidence
 
     def transcribe(
         self,
         audio_path: Path,
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        use_tta: bool = False,
+        tta_config: Optional[Dict] = None
     ) -> Path:
         """
         Transcribe audio using ensemble of models.
@@ -78,6 +83,8 @@ class EnsembleTranscriber:
         Args:
             audio_path: Path to audio file (should be piano stem)
             output_dir: Directory for output MIDI file
+            use_tta: Enable test-time augmentation (slower, more accurate)
+            tta_config: TTA configuration dict (optional)
 
         Returns:
             Path to ensemble MIDI file
@@ -85,6 +92,29 @@ class EnsembleTranscriber:
         if output_dir is None:
             output_dir = audio_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # If TTA enabled, delegate to TTA augmenter
+        if use_tta:
+            from backend.tta_augmenter import TTAugmenter
+
+            # Build TTA config from parameters
+            if tta_config is None:
+                tta_config = {}
+
+            augmenter = TTAugmenter(
+                augmentations=tta_config.get('augmentations', ['pitch_shift', 'time_stretch']),
+                pitch_shifts=tta_config.get('pitch_shifts', [-1, 0, +1]),
+                time_stretches=tta_config.get('time_stretches', [0.95, 1.0, 1.05]),
+                min_votes=tta_config.get('min_votes', 3),
+                onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 50)
+            )
+
+            # TTA will call self.transcribe() without use_tta for each augmentation
+            return augmenter.augment_and_transcribe(
+                audio_path,
+                transcriber=self,
+                temp_dir=output_dir / "tta_temp"
+            )
 
         print(f"\n   ═══ Ensemble Transcription ═══")
         print(f"   Strategy: {self.voting_strategy}")
@@ -96,11 +126,20 @@ class EnsembleTranscriber:
         yourmt3_notes = self._extract_notes_from_midi(yourmt3_midi)
         print(f"   ✓ YourMT3+ found {len(yourmt3_notes)} notes")
 
-        # Transcribe with ByteDance
+        # Transcribe with ByteDance (with confidence if enabled)
         print(f"\n   [2/2] Transcribing with ByteDance...")
-        bytedance_midi = self.bytedance.transcribe_audio(audio_path, output_dir)
-        bytedance_notes = self._extract_notes_from_midi(bytedance_midi)
-        print(f"   ✓ ByteDance found {len(bytedance_notes)} notes")
+        if self.use_bytedance_confidence:
+            bytedance_result = self.bytedance.transcribe_with_confidence(audio_path, output_dir)
+            bytedance_midi = bytedance_result['midi_path']
+            bytedance_notes = self._extract_notes_from_midi_with_confidence(
+                bytedance_midi,
+                bytedance_result['note_confidences']
+            )
+            print(f"   ✓ ByteDance found {len(bytedance_notes)} notes (with confidence scores)")
+        else:
+            bytedance_midi = self.bytedance.transcribe_audio(audio_path, output_dir)
+            bytedance_notes = self._extract_notes_from_midi(bytedance_midi)
+            print(f"   ✓ ByteDance found {len(bytedance_notes)} notes")
 
         # Vote and merge
         print(f"\n   Voting with '{self.voting_strategy}' strategy...")
@@ -142,7 +181,56 @@ class EnsembleTranscriber:
                     onset=note.start,
                     offset=note.end,
                     velocity=note.velocity,
-                    confidence=1.0  # Default confidence (TODO: extract from model if available)
+                    confidence=1.0  # Default confidence (YourMT3+ doesn't provide confidence)
+                ))
+
+        # Sort by onset time
+        notes.sort(key=lambda n: n.onset)
+        return notes
+
+    def _extract_notes_from_midi_with_confidence(
+        self,
+        midi_path: Path,
+        note_confidences: List[Dict]
+    ) -> List[Note]:
+        """
+        Extract notes from MIDI file with confidence scores.
+
+        Args:
+            midi_path: Path to MIDI file
+            note_confidences: List of confidence scores from ByteDance
+
+        Returns:
+            List of Note objects with confidence scores
+        """
+        # Create lookup dict for fast confidence retrieval
+        # Key: (pitch, onset_bucket) for approximate matching
+        confidence_lookup = {}
+        for note_conf in note_confidences:
+            # Bucket onset to 10ms precision for matching
+            onset_bucket = round(note_conf['onset'] * 100)  # 100 buckets per second = 10ms
+            key = (note_conf['pitch'], onset_bucket)
+            confidence_lookup[key] = note_conf['confidence']
+
+        pm = pretty_midi.PrettyMIDI(str(midi_path))
+
+        notes = []
+        for instrument in pm.instruments:
+            if instrument.is_drum:
+                continue
+
+            for note in instrument.notes:
+                # Look up confidence score
+                onset_bucket = round(note.start * 100)
+                key = (note.pitch, onset_bucket)
+                confidence = confidence_lookup.get(key, 0.8)  # Default to 0.8 if not found
+
+                notes.append(Note(
+                    pitch=note.pitch,
+                    onset=note.start,
+                    offset=note.end,
+                    velocity=note.velocity,
+                    confidence=confidence
                 ))
 
         # Sort by onset time
@@ -181,9 +269,14 @@ class EnsembleTranscriber:
         model_names: List[str]
     ) -> List[Note]:
         """
-        Weighted voting: Sum confidence scores, keep notes above threshold.
+        Weighted voting: Multiply model weight by note confidence, keep notes above threshold.
 
-        Gives higher weight to ByteDance (piano specialist).
+        Model weights:
+        - YourMT3+: 0.4 (generalist, no confidence scores available)
+        - ByteDance: 0.6 (piano specialist, uses actual frame-level confidence)
+
+        Combined weight = model_weight × note_confidence
+        This allows ByteDance's low-confidence notes to be downweighted appropriately.
         """
         # Model weights (ByteDance is more accurate for piano)
         weights = {'YourMT3+': 0.4, 'ByteDance': 0.6}
@@ -193,7 +286,7 @@ class EnsembleTranscriber:
 
         for model_idx, notes in enumerate(note_lists):
             model_name = model_names[model_idx]
-            weight = weights.get(model_name, 1.0 / len(note_lists))
+            model_weight = weights.get(model_name, 1.0 / len(note_lists))
 
             for note in notes:
                 # Quantize onset to tolerance bucket
@@ -203,21 +296,42 @@ class EnsembleTranscriber:
                 if key not in note_groups:
                     note_groups[key] = []
 
-                # Add note with weighted confidence
-                note.confidence *= weight
-                note_groups[key].append(note)
+                # Combined weight = model weight × note confidence
+                # For YourMT3+: confidence=1.0, so combined = 0.4
+                # For ByteDance: confidence from frame predictions, so combined = 0.6 × confidence
+                # This allows ByteDance's uncertain predictions to be downweighted
+                combined_confidence = model_weight * note.confidence
+
+                # Create weighted note
+                weighted_note = Note(
+                    pitch=note.pitch,
+                    onset=note.onset,
+                    offset=note.offset,
+                    velocity=note.velocity,
+                    confidence=combined_confidence
+                )
+                note_groups[key].append(weighted_note)
 
         # Merge notes in each group
         merged_notes = []
         for (onset_bucket, pitch), group in note_groups.items():
-            # Sum confidence across models
+            # Sum combined confidence across models
             total_confidence = sum(n.confidence for n in group)
 
             if total_confidence >= self.confidence_threshold:
-                # Use average timing and velocity
-                avg_onset = np.mean([n.onset for n in group])
-                avg_offset = np.mean([n.offset for n in group])
-                avg_velocity = int(np.mean([n.velocity for n in group]))
+                # Weighted average of timing and velocity
+                # Weight by each note's confidence for more accurate averaging
+                weights_sum = sum(n.confidence for n in group)
+
+                if weights_sum > 0:
+                    avg_onset = sum(n.onset * n.confidence for n in group) / weights_sum
+                    avg_offset = sum(n.offset * n.confidence for n in group) / weights_sum
+                    avg_velocity = int(sum(n.velocity * n.confidence for n in group) / weights_sum)
+                else:
+                    # Fallback to simple average
+                    avg_onset = np.mean([n.onset for n in group])
+                    avg_offset = np.mean([n.offset for n in group])
+                    avg_velocity = int(np.mean([n.velocity for n in group]))
 
                 merged_notes.append(Note(
                     pitch=pitch,

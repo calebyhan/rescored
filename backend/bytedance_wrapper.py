@@ -176,22 +176,12 @@ class ByteDanceTranscriber:
         # Load generated MIDI to map confidence to notes
         pm = pretty_midi.PrettyMIDI(str(midi_path))
 
-        # Extract note-level confidence
-        note_confidences = []
-        for instrument in pm.instruments:
-            if instrument.is_drum:
-                continue
-
-            for note in instrument.notes:
-                # Get average onset confidence during note's onset window
-                # (simplified - full implementation would use frame analysis)
-                note_confidences.append({
-                    'pitch': note.pitch,
-                    'onset': note.start,
-                    'offset': note.end,
-                    'velocity': note.velocity,
-                    'confidence': 0.9  # Placeholder - TODO: extract from onset_roll
-                })
+        # Extract note-level confidence from frame-level predictions
+        note_confidences = self._extract_note_confidences_from_rolls(
+            pm,
+            transcription_result.get('onset_roll'),
+            transcription_result.get('offset_roll')
+        )
 
         return {
             'midi_path': midi_path,
@@ -200,6 +190,76 @@ class ByteDanceTranscriber:
             'raw_offset_roll': transcription_result.get('offset_roll'),
             'raw_velocity_roll': transcription_result.get('velocity_roll')
         }
+
+    def _extract_note_confidences_from_rolls(
+        self,
+        pm: 'pretty_midi.PrettyMIDI',
+        onset_roll: np.ndarray,
+        offset_roll: np.ndarray
+    ) -> list:
+        """
+        Extract note-level confidence scores from frame-level predictions.
+
+        Args:
+            pm: PrettyMIDI object with notes
+            onset_roll: (frames, 88) onset probabilities from ByteDance
+            offset_roll: (frames, 88) offset probabilities from ByteDance
+
+        Returns:
+            List of dicts with note info and confidence scores
+        """
+        note_confidences = []
+
+        # ByteDance frame rate: 100 FPS (frames per second)
+        frames_per_second = 100
+
+        for instrument in pm.instruments:
+            if instrument.is_drum:
+                continue
+
+            for note in instrument.notes:
+                # Map MIDI pitch to piano roll index (A0=21 → index 0)
+                piano_idx = note.pitch - 21
+
+                # Skip if pitch is out of piano range
+                if not (0 <= piano_idx < 88):
+                    continue
+
+                # Extract onset confidence
+                onset_frame = int(note.start * frames_per_second)
+                onset_frame = max(0, min(onset_frame, onset_roll.shape[0] - 1))
+
+                # Get confidence window (±2 frames around onset for robustness)
+                onset_window_start = max(0, onset_frame - 2)
+                onset_window_end = min(onset_roll.shape[0], onset_frame + 3)
+                onset_window = onset_roll[onset_window_start:onset_window_end, piano_idx]
+                onset_conf = float(np.max(onset_window)) if len(onset_window) > 0 else 0.5
+
+                # Extract offset confidence
+                offset_frame = int(note.end * frames_per_second)
+                offset_frame = max(0, min(offset_frame, offset_roll.shape[0] - 1))
+
+                # Get confidence window (±2 frames around offset)
+                offset_window_start = max(0, offset_frame - 2)
+                offset_window_end = min(offset_roll.shape[0], offset_frame + 3)
+                offset_window = offset_roll[offset_window_start:offset_window_end, piano_idx]
+                offset_conf = float(np.max(offset_window)) if len(offset_window) > 0 else 0.5
+
+                # Combined confidence (geometric mean favors consistency)
+                # Geometric mean penalizes low scores more than arithmetic mean
+                combined_confidence = float(np.sqrt(onset_conf * offset_conf))
+
+                note_confidences.append({
+                    'pitch': note.pitch,
+                    'onset': note.start,
+                    'offset': note.end,
+                    'velocity': note.velocity,
+                    'onset_confidence': onset_conf,
+                    'offset_confidence': offset_conf,
+                    'confidence': combined_confidence
+                })
+
+        return note_confidences
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """Configuration module for Rescored backend."""
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from typing import List
 import torch
 
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # Redis Configuration (uses fakeredis on HF Spaces/development)
-    use_fake_redis: bool = True  # Set to False in production with real Redis
+    use_fake_redis: bool = False  # Set to False in production with real Redis
     redis_url: str = "redis://localhost:6379/0"
 
     # Storage Configuration
@@ -94,6 +95,19 @@ class Settings(BaseSettings):
     ensemble_voting_strategy: str = "weighted"  # Voting strategy: weighted, intersection, union, majority
     ensemble_onset_tolerance_ms: int = 50  # Time window for matching notes (milliseconds)
     ensemble_confidence_threshold: float = 0.6  # Minimum confidence for weighted voting
+
+    # Phase 1.1: Enhanced Confidence Filtering
+    use_bytedance_confidence: bool = True  # Use ByteDance frame-level confidence scores (onset_roll/offset_roll)
+    confidence_aggregation: str = "geometric_mean"  # How to combine onset and offset confidence
+    confidence_window_frames: int = 5  # ±2 frames around onset/offset for confidence extraction
+
+    # Phase 1.2: Test-Time Augmentation (TTA)
+    enable_tta: bool = False  # OFF by default (user opts in for quality mode - 3-5x slower)
+    tta_augmentations: List[str] = ['pitch_shift', 'time_stretch']  # Augmentation types
+    tta_pitch_shifts: List[int] = [-1, 0, +1]  # Semitone shifts (0 = original)
+    tta_time_stretches: List[float] = [0.95, 1.0, 1.05]  # Time stretch rates (1.0 = original)
+    tta_min_votes: int = 3  # Minimum augmentations that must predict a note
+    tta_onset_tolerance_ms: int = 50  # Time window for matching notes across augmentations
 
     # Audio Preprocessing Configuration
     enable_audio_preprocessing: bool = True  # Preprocess audio before separation/transcription
