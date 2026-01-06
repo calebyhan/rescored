@@ -1,14 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=phase1_eval
-#SBATCH --output=logs/slurm/phase1_eval_%j.log
-#SBATCH --error=logs/slurm/phase1_eval_%j.err
+#SBATCH --output=../../../logs/slurm/phase1_eval_%j.log
+#SBATCH --error=../../../logs/slurm/phase1_eval_%j.err
 #SBATCH --time=2-00:00:00              # 2 days (should be sufficient for full test split)
 #SBATCH --cpus-per-task=8              # 8 CPUs for parallel processing
 #SBATCH --mem=32G                      # 32GB RAM for transcription models
-#SBATCH --partition=gpu                # GPU partition for faster transcription
+#SBATCH --partition=l40-gpu                # GPU partition for faster transcription
+#SBATCH --qos=gpu_access             # Required QoS
 #SBATCH --gres=gpu:1                   # 1 GPU (A100/V100)
-#SBATCH --mail-type=END,FAIL           # Email notifications
-#SBATCH --mail-user=calebhan@unc.edu   # Your email
 
 ################################################################################
 # Phase 1 Evaluation Script

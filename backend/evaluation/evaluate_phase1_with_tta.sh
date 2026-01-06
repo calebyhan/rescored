@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=phase1_tta
-#SBATCH --output=logs/slurm/phase1_tta_%j.log
-#SBATCH --error=logs/slurm/phase1_tta_%j.err
+#SBATCH --output=../../../logs/slurm/phase1_tta_%j.log
+#SBATCH --error=../../../logs/slurm/phase1_tta_%j.err
 #SBATCH --time=5-00:00:00              # 5 days for TTA evaluation (very slow!)
 #SBATCH --cpus-per-task=8              # 8 CPUs
 #SBATCH --mem=64G                      # 64GB RAM (TTA needs more memory)
-#SBATCH --partition=gpu                # GPU partition
+#SBATCH --partition=l40-gpu                # GPU partition
+#SBATCH --qos=gpu_access             # Required QoS
 #SBATCH --gres=gpu:1                   # 1 GPU (A100 preferred)
-#SBATCH --mail-type=END,FAIL           # Email notifications
-#SBATCH --mail-user=calebhan@unc.edu   # Your email
+
 
 ################################################################################
 # Phase 1 Evaluation Script WITH TTA (Test-Time Augmentation)
