@@ -42,7 +42,6 @@ celery_app.conf.update(
     # Eager mode for HF Spaces (synchronous execution)
     task_always_eager=task_always_eager,
     task_eager_propagates=True,
-    enable_utc=True,
 
     # Task settings
     task_track_started=True,
