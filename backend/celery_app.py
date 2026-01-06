@@ -57,3 +57,7 @@ celery_app.conf.update(
     task_default_queue='default',
     task_default_routing_key='default',
 )
+
+# Import tasks to register them with Celery
+# This must come after celery_app is created
+import tasks  # noqa: E402, F401
