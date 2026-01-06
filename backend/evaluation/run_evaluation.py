@@ -36,8 +36,14 @@ def create_transcriber(config: Settings, use_tta: bool = False):
         # Override TTA setting
         config.enable_tta = use_tta
 
-        # Create pipeline
-        pipeline = TranscriptionPipeline(config)
+        # Create pipeline with dummy job_id and youtube_url (not needed for evaluation)
+        job_id = f"eval_{audio_path.stem}"
+        pipeline = TranscriptionPipeline(
+            job_id=job_id,
+            youtube_url="",  # Not needed for evaluation
+            storage_path=output_dir,
+            config=config
+        )
 
         # Simplified pipeline for evaluation:
         # 1. Preprocess audio (optional)
