@@ -12,19 +12,35 @@ export interface Instrument {
 
 const INSTRUMENTS: Instrument[] = [
   { id: 'piano', label: 'Piano', icon: '🎹' },
-  { id: 'vocals', label: 'Vocals (Violin)', icon: '🎤' },
+  { id: 'vocals', label: 'Vocals', icon: '🎤' },
   { id: 'drums', label: 'Drums', icon: '🥁' },
   { id: 'bass', label: 'Bass', icon: '🎸' },
   { id: 'guitar', label: 'Guitar', icon: '🎸' },
   { id: 'other', label: 'Other Instruments', icon: '🎵' }
 ];
 
+export const VOCAL_INSTRUMENTS = [
+  { id: 'violin', label: 'Violin', program: 40 },
+  { id: 'flute', label: 'Flute', program: 73 },
+  { id: 'clarinet', label: 'Clarinet', program: 71 },
+  { id: 'saxophone', label: 'Saxophone', program: 64 },
+  { id: 'trumpet', label: 'Trumpet', program: 56 },
+  { id: 'voice', label: 'Singing Voice', program: 65 },
+];
+
 interface InstrumentSelectorProps {
   selectedInstruments: string[];
   onChange: (instruments: string[]) => void;
+  vocalInstrument?: string;
+  onVocalInstrumentChange?: (instrument: string) => void;
 }
 
-export function InstrumentSelector({ selectedInstruments, onChange }: InstrumentSelectorProps) {
+export function InstrumentSelector({
+  selectedInstruments,
+  onChange,
+  vocalInstrument = 'violin',
+  onVocalInstrumentChange
+}: InstrumentSelectorProps) {
   const handleToggle = (instrumentId: string) => {
     const isSelected = selectedInstruments.includes(instrumentId);
 
@@ -33,11 +49,17 @@ export function InstrumentSelector({ selectedInstruments, onChange }: Instrument
       if (selectedInstruments.length === 1) {
         return;
       }
-      onChange(selectedInstruments.filter(id => id !== instrumentId));
+      const newInstruments = selectedInstruments.filter(id => id !== instrumentId);
+      console.log('[DEBUG] InstrumentSelector: Removing', instrumentId, '-> New list:', newInstruments);
+      onChange(newInstruments);
     } else {
-      onChange([...selectedInstruments, instrumentId]);
+      const newInstruments = [...selectedInstruments, instrumentId];
+      console.log('[DEBUG] InstrumentSelector: Adding', instrumentId, '-> New list:', newInstruments);
+      onChange(newInstruments);
     }
   };
+
+  const vocalsSelected = selectedInstruments.includes('vocals');
 
   return (
     <div className="instrument-selector">
@@ -56,6 +78,24 @@ export function InstrumentSelector({ selectedInstruments, onChange }: Instrument
           </button>
         ))}
       </div>
+
+      {vocalsSelected && onVocalInstrumentChange && (
+        <div className="vocal-instrument-selector">
+          <label htmlFor="vocal-instrument">Transcribe vocals as:</label>
+          <select
+            id="vocal-instrument"
+            value={vocalInstrument}
+            onChange={(e) => onVocalInstrumentChange(e.target.value)}
+          >
+            {VOCAL_INSTRUMENTS.map(inst => (
+              <option key={inst.id} value={inst.id}>
+                {inst.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <p className="selector-hint">
         Select at least one instrument to transcribe
       </p>

@@ -33,18 +33,52 @@ except ImportError as e:
     print(f"WARNING: madmom not available. Falling back to librosa for tempo/beat detection.")
     print(f"         Error: {e}")
 
+# Import wrapper modules at top level
+try:
+    from audio_separator_wrapper import AudioSeparator
+    AUDIO_SEPARATOR_AVAILABLE = True
+except ImportError as e:
+    AUDIO_SEPARATOR_AVAILABLE = False
+    AudioSeparator = None
+    print(f"WARNING: audio_separator_wrapper not available: {e}")
+
+try:
+    from yourmt3_wrapper import YourMT3Transcriber
+    YOURMT3_AVAILABLE = True
+except ImportError as e:
+    YOURMT3_AVAILABLE = False
+    YourMT3Transcriber = None
+    print(f"WARNING: yourmt3_wrapper not available: {e}")
+
+try:
+    from bytedance_wrapper import ByteDanceTranscriber
+    BYTEDANCE_AVAILABLE = True
+except ImportError as e:
+    BYTEDANCE_AVAILABLE = False
+    ByteDanceTranscriber = None
+    print(f"WARNING: bytedance_wrapper not available: {e}")
+
+try:
+    from ensemble_transcriber import EnsembleTranscriber
+    ENSEMBLE_AVAILABLE = True
+except ImportError as e:
+    ENSEMBLE_AVAILABLE = False
+    EnsembleTranscriber = None
+    print(f"WARNING: ensemble_transcriber not available: {e}")
+
 
 
 class TranscriptionPipeline:
     """Handles the complete transcription workflow."""
 
-    def __init__(self, job_id: str, youtube_url: str, storage_path: Path, config=None):
+    def __init__(self, job_id: str, youtube_url: str, storage_path: Path, config=None, instruments: list = None):
         self.job_id = job_id
         self.youtube_url = youtube_url
         self.storage_path = storage_path
         self.temp_dir = storage_path / "temp" / job_id
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.progress_callback = None
+        self.instruments = instruments if instruments else ['piano']
 
         # Load configuration
         if config is None:
@@ -117,6 +151,9 @@ class TranscriptionPipeline:
             else:
                 midi_path = piano_midi
 
+            # Filter MIDI to only include selected instruments
+            midi_path = self.filter_midi_by_instruments(midi_path)
+
             # Apply post-processing filters (Phase 4)
             midi_path = self.apply_post_processing_filters(midi_path)
 
@@ -164,6 +201,16 @@ class TranscriptionPipeline:
             # Log the full error for debugging
             print(f"yt-dlp stderr: {result.stderr}")
             print(f"yt-dlp stdout: {result.stdout}")
+
+            # Check for DNS resolution errors
+            stderr_lower = result.stderr.lower()
+            if ("failed to resolve" in stderr_lower or
+                "no address associated with hostname" in stderr_lower or
+                "unable to download api page" in stderr_lower):
+                raise RuntimeError(
+                    "Unable to connect to YouTube. For this demo version, please upload your audio file directly using the file upload option."
+                )
+
             raise RuntimeError(f"yt-dlp failed: {result.stderr}")
 
         if not output_path.exists():
@@ -231,7 +278,9 @@ class TranscriptionPipeline:
             # 2. Demucs separates clean instrumental into piano/guitar/drums/bass/other
             print("   Using two-stage separation (BS-RoFormer + Demucs)")
 
-            from audio_separator_wrapper import AudioSeparator
+            if not AUDIO_SEPARATOR_AVAILABLE or AudioSeparator is None:
+                raise RuntimeError("audio_separator_wrapper is not available")
+
             separator = AudioSeparator()
 
             separation_dir = self.temp_dir / "separation"
@@ -254,7 +303,9 @@ class TranscriptionPipeline:
             # Direct Demucs 6-stem separation (no vocal pre-removal)
             print("   Using Demucs 6-stem separation")
 
-            from audio_separator_wrapper import AudioSeparator
+            if not AUDIO_SEPARATOR_AVAILABLE or AudioSeparator is None:
+                raise RuntimeError("audio_separator_wrapper is not available")
+
             separator = AudioSeparator()
 
             instrument_dir = self.temp_dir / "instruments"
@@ -297,6 +348,52 @@ class TranscriptionPipeline:
                 raise RuntimeError("Demucs did not create expected output files")
 
             return stems
+
+    def transcribe_multiple_stems(self, stems: dict) -> Path:
+        """
+        Transcribe multiple instrument stems and combine into single MIDI.
+
+        Args:
+            stems: Dict mapping stem names to file paths (e.g., {'piano': Path, 'vocals': Path})
+
+        Returns:
+            Path to combined MIDI file
+        """
+        import pretty_midi
+
+        print(f"   Transcribing {len(stems)} stems: {list(stems.keys())}")
+
+        # Transcribe each stem separately
+        stem_midis = {}
+        for stem_name, stem_path in stems.items():
+            print(f"   [Stem {stem_name}] Transcribing {stem_path.name}...")
+
+            # Use appropriate transcription method
+            if stem_name == 'piano' and self.config.use_ensemble_transcription:
+                midi_path = self.transcribe_with_ensemble(stem_path)
+            else:
+                midi_path = self.transcribe_with_yourmt3(stem_path)
+
+            stem_midis[stem_name] = midi_path
+            print(f"   [Stem {stem_name}] ✓ Complete")
+
+        # Combine all MIDI files
+        print(f"   Combining {len(stem_midis)} MIDI files...")
+        combined_pm = pretty_midi.PrettyMIDI()
+
+        for stem_name, midi_path in stem_midis.items():
+            pm = pretty_midi.PrettyMIDI(str(midi_path))
+            # Add all instruments from this MIDI to the combined MIDI
+            for instrument in pm.instruments:
+                combined_pm.instruments.append(instrument)
+
+        # Save combined MIDI
+        combined_path = self.temp_dir / "combined_stems.mid"
+        combined_pm.write(str(combined_path))
+
+        print(f"   ✓ Combined {len(stem_midis)} stems into {len(combined_pm.instruments)} MIDI tracks")
+
+        return combined_path
 
     def transcribe_to_midi(
         self,
@@ -407,16 +504,8 @@ class TranscriptionPipeline:
         Raises:
             RuntimeError: If transcription fails
         """
-        try:
-            from yourmt3_wrapper import YourMT3Transcriber
-        except ImportError:
-            # Try adding backend directory to path
-            import sys
-            from pathlib import Path as PathLib
-            backend_dir = PathLib(__file__).parent
-            if str(backend_dir) not in sys.path:
-                sys.path.insert(0, str(backend_dir))
-            from yourmt3_wrapper import YourMT3Transcriber
+        if not YOURMT3_AVAILABLE or YourMT3Transcriber is None:
+            raise RuntimeError("yourmt3_wrapper is not available")
 
         print(f"   Transcribing with YourMT3+ (direct call, device: {self.config.yourmt3_device})...")
 
@@ -459,20 +548,12 @@ class TranscriptionPipeline:
         Raises:
             RuntimeError: If transcription fails
         """
-        try:
-            from yourmt3_wrapper import YourMT3Transcriber
-            from bytedance_wrapper import ByteDanceTranscriber
-            from ensemble_transcriber import EnsembleTranscriber
-        except ImportError:
-            # Try adding backend directory to path
-            import sys
-            from pathlib import Path as PathLib
-            backend_dir = PathLib(__file__).parent
-            if str(backend_dir) not in sys.path:
-                sys.path.insert(0, str(backend_dir))
-            from yourmt3_wrapper import YourMT3Transcriber
-            from bytedance_wrapper import ByteDanceTranscriber
-            from ensemble_transcriber import EnsembleTranscriber
+        if not YOURMT3_AVAILABLE or YourMT3Transcriber is None:
+            raise RuntimeError("yourmt3_wrapper is not available")
+        if not BYTEDANCE_AVAILABLE or ByteDanceTranscriber is None:
+            raise RuntimeError("bytedance_wrapper is not available")
+        if not ENSEMBLE_AVAILABLE or EnsembleTranscriber is None:
+            raise RuntimeError("ensemble_transcriber is not available")
 
         try:
             # Initialize transcribers
@@ -527,15 +608,8 @@ class TranscriptionPipeline:
 
         # Use YourMT3+ for vocal transcription
         # (Could use dedicated melody transcription model in future)
-        try:
-            from yourmt3_wrapper import YourMT3Transcriber
-        except ImportError:
-            import sys
-            from pathlib import Path as PathLib
-            backend_dir = PathLib(__file__).parent
-            if str(backend_dir) not in sys.path:
-                sys.path.insert(0, str(backend_dir))
-            from yourmt3_wrapper import YourMT3Transcriber
+        if not YOURMT3_AVAILABLE or YourMT3Transcriber is None:
+            raise RuntimeError("yourmt3_wrapper is not available")
 
         transcriber = YourMT3Transcriber(
             model_name="YPTF.MoE+Multi (noPS)",
@@ -647,6 +721,103 @@ class TranscriptionPipeline:
         print(f"   Instruments: Piano (program {piano_program}), Vocals (program {vocal_program})")
 
         return merged_path
+
+    def filter_midi_by_instruments(self, midi_path: Path) -> Path:
+        """
+        Filter MIDI file to only include tracks for selected instruments.
+
+        YourMT3+ transcribes all instruments it detects. This function filters
+        the output to only keep tracks matching the user's selection.
+
+        Args:
+            midi_path: Input MIDI file (may contain multiple instrument tracks)
+
+        Returns:
+            Path to filtered MIDI file containing only selected instruments
+        """
+        import pretty_midi
+
+        # Map instrument IDs to MIDI program ranges
+        # YourMT3+ uses General MIDI program numbers
+        INSTRUMENT_PROGRAMS = {
+            'piano': list(range(0, 8)),      # Acoustic Grand Piano to Celesta
+            'guitar': list(range(24, 32)),   # Acoustic Guitar to Guitar Harmonics
+            'bass': list(range(32, 40)),     # Acoustic Bass to Synth Bass 2
+            'drums': [128],                   # Drum channel (special case)
+            'vocals': list(range(52, 56)) + [65, 85],  # Choir Aahs, Voice Oohs, Synth Voice, Lead Voice, YourMT3+ "Singing Voice" (65)
+            'other': list(range(8, 24)) + list(range(40, 52)) + list(range(56, 65)) + list(range(66, 85)) + list(range(86, 128))  # Everything else (excluding vocals programs)
+        }
+
+        # Load MIDI file
+        pm = pretty_midi.PrettyMIDI(str(midi_path))
+
+        # Debug: Show what's in the MIDI before filtering
+        print(f"   [DEBUG] MIDI contains {len(pm.instruments)} tracks before filtering:")
+        for i, inst in enumerate(pm.instruments):
+            print(f"      Track {i}: {inst.name} (program={inst.program}, is_drum={inst.is_drum}, notes={len(inst.notes)})")
+
+        # Determine which programs to keep
+        programs_to_keep = set()
+        for instrument in self.instruments:
+            if instrument in INSTRUMENT_PROGRAMS:
+                programs_to_keep.update(INSTRUMENT_PROGRAMS[instrument])
+
+        print(f"   [DEBUG] Looking for programs: {sorted(programs_to_keep)[:20]}... (selected instruments: {self.instruments})")
+
+        # Group instruments by category to handle YourMT3+ outputting multiple tracks per instrument
+        # (e.g., both "Acoustic Piano" and "Electric Piano" for piano)
+        instrument_groups = {}
+        for inst in pm.instruments:
+            # Determine which category this instrument belongs to
+            matched_category = None
+            if inst.is_drum and 128 in programs_to_keep:
+                matched_category = 'drums'
+            elif not inst.is_drum and inst.program in programs_to_keep:
+                # Find which instrument category this program belongs to
+                for instr_name, programs in INSTRUMENT_PROGRAMS.items():
+                    if inst.program in programs and instr_name in self.instruments:
+                        matched_category = instr_name
+                        break
+
+            if matched_category:
+                if matched_category not in instrument_groups:
+                    instrument_groups[matched_category] = []
+                instrument_groups[matched_category].append(inst)
+                print(f"   [DEBUG] Track '{inst.name}' (program={inst.program}) matched category: {matched_category}")
+
+        # For each category, keep only the track with the most notes
+        # (YourMT3+ sometimes outputs spurious tracks with very few notes)
+        filtered_instruments = []
+        for category, tracks in instrument_groups.items():
+            if len(tracks) == 1:
+                filtered_instruments.append(tracks[0])
+            else:
+                # Keep the track with the most notes
+                best_track = max(tracks, key=lambda t: len(t.notes))
+                filtered_instruments.append(best_track)
+
+                # Log which tracks were filtered out
+                for track in tracks:
+                    if track != best_track:
+                        track_name = track.name or f"Program {track.program}"
+                        best_name = best_track.name or f"Program {best_track.program}"
+                        print(f"   Filtered out spurious track: {track_name} ({len(track.notes)} notes) - kept {best_name} ({len(best_track.notes)} notes)")
+
+        # Create new MIDI with only selected instruments
+        filtered_pm = pretty_midi.PrettyMIDI()
+        filtered_pm.instruments = filtered_instruments
+
+        # Save filtered MIDI
+        filtered_path = midi_path.parent / f"{midi_path.stem}_filtered.mid"
+        filtered_pm.write(str(filtered_path))
+
+        # Log filtering results
+        original_count = len(pm.instruments)
+        filtered_count = len(filtered_instruments)
+        print(f"   Filtered MIDI: {original_count} tracks → {filtered_count} tracks (1 per category)")
+        print(f"   Kept instruments: {self.instruments}")
+
+        return filtered_path
 
     def apply_post_processing_filters(self, midi_path: Path) -> Path:
         """

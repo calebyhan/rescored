@@ -111,3 +111,38 @@ button:hover {
   margin-top: 1rem;
   border: 1px solid #f5c6cb;
 }
+
+.upload-mode-selector {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.upload-mode-selector button {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  background-color: #f0f0f0;
+  color: #333;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upload-mode-selector button:hover {
+  background-color: #e0e0e0;
+  border-color: #bbb;
+}
+
+.upload-mode-selector button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.file-info {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}

@@ -49,7 +49,7 @@ export class RescoredAPI {
   private baseURL = API_BASE_URL;
   private wsBaseURL = WS_BASE_URL;
 
-  async submitJob(youtubeURL: string, options?: { instruments?: string[] }): Promise<TranscribeResponse> {
+  async submitJob(youtubeURL: string, options?: { instruments?: string[]; vocalInstrument?: number }): Promise<TranscribeResponse> {
     const response = await fetch(`${this.baseURL}/api/v1/transcribe`, {
       method: 'POST',
       headers: {
@@ -64,6 +64,27 @@ export class RescoredAPI {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to submit job');
+    }
+
+    return response.json();
+  }
+
+  async submitFileJob(file: File, options?: { instruments?: string[]; vocalInstrument?: number }): Promise<TranscribeResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('instruments', JSON.stringify(options?.instruments ?? ['piano']));
+    if (options?.vocalInstrument !== undefined) {
+      formData.append('vocal_instrument', options.vocalInstrument.toString());
+    }
+
+    const response = await fetch(`${this.baseURL}/api/v1/transcribe/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to submit file');
     }
 
     return response.json();

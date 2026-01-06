@@ -1,4 +1,12 @@
 """Celery tasks for background job processing."""
+import sys
+from pathlib import Path
+
+# Ensure backend directory is in Python path for imports
+backend_dir = Path(__file__).parent.resolve()
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 from celery import Task
 from celery_app import celery_app
 from pipeline import TranscriptionPipeline, run_transcription_pipeline
@@ -6,7 +14,6 @@ import redis
 import json
 import os
 from datetime import datetime
-from pathlib import Path
 from app_config import settings
 import shutil
 
@@ -76,24 +83,126 @@ def process_transcription_task(self, job_id: str):
 
         # Get job data
         job_data = redis_client.hgetall(f"job:{job_id}")
-        
+
         if not job_data:
             raise ValueError(f"Job not found: {job_id}")
-        
-        youtube_url = job_data.get('youtube_url')
-        if not youtube_url:
-            raise ValueError(f"Job missing youtube_url: {job_id}")
 
-        # Initialize pipeline
+        # Check if this is a file upload or YouTube URL job
+        upload_path = job_data.get('upload_path')
+        youtube_url = job_data.get('youtube_url')
+
+        # Parse instruments option (defaults to piano only)
+        instruments = ['piano']
+        vocal_instrument_program = 40  # Default to violin
+        if 'options' in job_data:
+            try:
+                options = json.loads(job_data['options'])
+                instruments = options.get('instruments', ['piano'])
+                vocal_instrument_program = options.get('vocal_instrument', 40)
+            except (json.JSONDecodeError, KeyError):
+                instruments = ['piano']
+                vocal_instrument_program = 40
+
+        # Import shutil and subprocess
+        import shutil
+        import subprocess
+
+        # Create pipeline
         pipeline = TranscriptionPipeline(
             job_id=job_id,
-            youtube_url=youtube_url,
-            storage_path=settings.storage_path
+            youtube_url=youtube_url or "file://uploaded",  # Dummy URL for file uploads
+            storage_path=settings.storage_path,
+            instruments=instruments
         )
         pipeline.set_progress_callback(lambda p, s, m: self.update_progress(job_id, p, s, m))
 
-        # Run pipeline
-        temp_output_path = pipeline.run()
+        # Get audio.wav - either from upload or YouTube download
+        audio_path = pipeline.temp_dir / "audio.wav"
+
+        if upload_path:
+            # File upload - convert to WAV if needed
+            upload_file = Path(upload_path)
+            if upload_file.suffix.lower() == '.wav':
+                shutil.copy(str(upload_file), str(audio_path))
+            else:
+                # Convert to WAV using ffmpeg
+                result = subprocess.run([
+                    'ffmpeg', '-i', str(upload_file),
+                    '-ar', '44100', '-ac', '2',
+                    str(audio_path)
+                ], capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise RuntimeError(f"Audio conversion failed: {result.stderr}")
+        elif youtube_url:
+            # YouTube download
+            pipeline.progress(0, "download", "Starting audio download")
+            audio_path = pipeline.download_audio()
+        else:
+            raise ValueError(f"Job missing both youtube_url and upload_path: {job_id}")
+
+        # From here, both paths converge - process audio.wav the same way
+        # Preprocess audio if enabled
+        if pipeline.config.enable_audio_preprocessing:
+            pipeline.progress(10, "preprocess", "Preprocessing audio")
+            audio_path = pipeline.preprocess_audio(audio_path)
+
+        # Source separation
+        pipeline.progress(20, "separate", "Starting source separation")
+        all_stems = pipeline.separate_sources(audio_path)
+
+        # Select stems to transcribe based on user selection
+        stems_to_transcribe = {}
+        for instrument in instruments:
+            if instrument in all_stems:
+                stems_to_transcribe[instrument] = all_stems[instrument]
+                print(f"   [DEBUG] Will transcribe {instrument} stem")
+            else:
+                print(f"   [WARNING] {instrument} stem not found in separated audio")
+
+        # If no selected stems available, fall back to piano
+        if not stems_to_transcribe:
+            print(f"   [WARNING] No selected stems found, falling back to piano")
+            if 'piano' in all_stems:
+                stems_to_transcribe['piano'] = all_stems['piano']
+            else:
+                stems_to_transcribe['other'] = all_stems['other']
+
+        pipeline.progress(50, "transcribe", f"Transcribing {len(stems_to_transcribe)} instrument(s)")
+
+        # Transcribe stems
+        if len(stems_to_transcribe) == 1:
+            # Single stem - use original method
+            stem_path = list(stems_to_transcribe.values())[0]
+            combined_midi = pipeline.transcribe_to_midi(stem_path)
+        else:
+            # Multiple stems - use new multi-stem method
+            combined_midi = pipeline.transcribe_multiple_stems(stems_to_transcribe)
+
+        # Filter MIDI to only include selected instruments
+        filtered_midi = pipeline.filter_midi_by_instruments(combined_midi)
+
+        # Remap vocals MIDI program if vocals were selected
+        if 'vocals' in instruments and vocal_instrument_program != 65:
+            print(f"   [DEBUG] Remapping vocals MIDI program from 65 to {vocal_instrument_program}")
+            import pretty_midi
+            pm = pretty_midi.PrettyMIDI(str(filtered_midi))
+            for inst in pm.instruments:
+                if inst.program == 65 and not inst.is_drum:  # Singing Voice
+                    inst.program = vocal_instrument_program
+                    print(f"   [DEBUG] Changed track '{inst.name}' program to {vocal_instrument_program}")
+            # Save remapped MIDI
+            pm.write(str(filtered_midi))
+
+        # Apply post-processing
+        midi_path = pipeline.apply_post_processing_filters(filtered_midi)
+        pipeline.final_midi_path = midi_path
+
+        # Get audio stem for MusicXML generation (use piano if available, otherwise first available stem)
+        audio_stem = stems_to_transcribe.get('piano') or list(stems_to_transcribe.values())[0]
+
+        pipeline.progress(90, "musicxml", "Generating MusicXML")
+        temp_output_path = pipeline.generate_musicxml_minimal(midi_path, audio_stem)
+        pipeline.progress(100, "complete", "Transcription complete")
 
         # Output is already in the temp directory, move to persistent storage
         output_path = settings.outputs_path / f"{job_id}.musicxml"

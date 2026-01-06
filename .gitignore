@@ -244,6 +244,7 @@ storage/youtube_cookies*
 !storage/README.txt
 storage/outputs/*
 storage/temp/*
+storage/uploads/*
 
 # Temp files
 /tmp/

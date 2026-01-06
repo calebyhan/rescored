@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../api/client';
 import type { ProgressUpdate } from '../api/client';
-import { InstrumentSelector } from './InstrumentSelector';
+import { InstrumentSelector, VOCAL_INSTRUMENTS } from './InstrumentSelector';
 import './JobSubmission.css';
 
 interface JobSubmissionProps {
@@ -14,7 +14,10 @@ interface JobSubmissionProps {
 
 export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [uploadMode, setUploadMode] = useState<'url' | 'file'>('url');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>(['piano']);
+  const [vocalInstrument, setVocalInstrument] = useState('violin');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'processing' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -46,11 +49,18 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
     e.preventDefault();
     setError(null);
 
-    // Validate URL
-    const validation = validateUrl(youtubeUrl);
-    if (validation) {
-      setError(validation);
-      return;
+    // Validate based on mode
+    if (uploadMode === 'url') {
+      const validation = validateUrl(youtubeUrl);
+      if (validation) {
+        setError(validation);
+        return;
+      }
+    } else {
+      if (!selectedFile) {
+        setError('Please select an audio file');
+        return;
+      }
     }
 
     // Validate at least one instrument is selected
@@ -61,9 +71,18 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
 
     setStatus('submitting');
 
+    console.log('[DEBUG] About to submit job with instruments:', selectedInstruments);
+
+    // Get the MIDI program number for the selected vocal instrument
+    const vocalProgram = VOCAL_INSTRUMENTS.find(v => v.id === vocalInstrument)?.program || 40;
+
     try {
-      const response = await api.submitJob(youtubeUrl, { instruments: selectedInstruments });
+      const response = uploadMode === 'url'
+        ? await api.submitJob(youtubeUrl, { instruments: selectedInstruments, vocalInstrument: vocalProgram })
+        : await api.submitFileJob(selectedFile!, { instruments: selectedInstruments, vocalInstrument: vocalProgram });
+
       setYoutubeUrl('');
+      setSelectedFile(null);
       if (onJobSubmitted) onJobSubmitted(response);
 
       // Switch to processing status and connect WebSocket
@@ -164,23 +183,82 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
           <InstrumentSelector
             selectedInstruments={selectedInstruments}
             onChange={setSelectedInstruments}
+            vocalInstrument={vocalInstrument}
+            onVocalInstrumentChange={setVocalInstrument}
           />
 
           <div className="form-group">
-            <label htmlFor="youtube-url">YouTube URL:</label>
-            <input
-              id="youtube-url"
-              type="text"
-              value={youtubeUrl}
-              onChange={(e) => setYoutubeUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              required
-              onBlur={() => {
-                const validation = validateUrl(youtubeUrl);
-                if (validation) setError(validation);
-              }}
-            />
+            <label>Input Method:</label>
+            <div className="upload-mode-selector">
+              <button
+                type="button"
+                className={uploadMode === 'url' ? 'active' : ''}
+                onClick={() => {
+                  setUploadMode('url');
+                  setError(null);
+                }}
+              >
+                YouTube URL
+              </button>
+              <button
+                type="button"
+                className={uploadMode === 'file' ? 'active' : ''}
+                onClick={() => {
+                  setUploadMode('file');
+                  setError(null);
+                }}
+              >
+                Upload Audio File
+              </button>
+            </div>
           </div>
+
+          {uploadMode === 'url' ? (
+            <div className="form-group">
+              <label htmlFor="youtube-url">YouTube URL:</label>
+              <input
+                id="youtube-url"
+                type="text"
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                required
+                onBlur={() => {
+                  const validation = validateUrl(youtubeUrl);
+                  if (validation) setError(validation);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="form-group">
+              <label htmlFor="audio-file">Audio File (WAV, MP3, FLAC, etc.):</label>
+              <input
+                id="audio-file"
+                type="file"
+                accept=".wav,.mp3,.flac,.ogg,.m4a,.aac"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const maxSize = 100 * 1024 * 1024; // 100MB
+                    if (file.size > maxSize) {
+                      setError('File too large. Maximum size: 100MB');
+                      setSelectedFile(null);
+                    } else {
+                      setSelectedFile(file);
+                      setError(null);
+                    }
+                  }
+                }}
+                required
+              />
+              {selectedFile && (
+                <p className="file-info">
+                  Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                </p>
+              )}
+            </div>
+          )}
+
           <button type="submit" disabled={status === 'submitting'}>Transcribe</button>
           {status === 'submitting' && <div>Submitting...</div>}
           {error && <div role="alert" className="error-alert">{error}</div>}

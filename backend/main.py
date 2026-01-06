@@ -1,5 +1,5 @@
 """FastAPI application for Rescored backend."""
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, File, UploadFile
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, HttpUrl
@@ -157,6 +157,11 @@ class TranscribeRequest(BaseModel):
     options: dict = {"instruments": ["piano"]}
 
 
+class FileUploadTranscribeRequest(BaseModel):
+    """Request model for file upload transcription."""
+    options: dict = {"instruments": ["piano"]}
+
+
 class TranscribeResponse(BaseModel):
     """Response model for transcription submission."""
     job_id: str
@@ -267,6 +272,93 @@ async def submit_transcription(request: TranscribeRequest):
         "youtube_url": str(request.youtube_url),
         "video_id": video_id,
         "options": json.dumps(request.options),
+        "created_at": datetime.utcnow().isoformat(),
+        "progress": 0,
+        "current_stage": "queued",
+        "status_message": "Job queued for processing",
+    }
+
+    # Store in Redis
+    redis_client.hset(f"job:{job_id}", mapping=job_data)
+
+    # Queue Celery task
+    process_transcription_task.delay(job_id)
+
+    return TranscribeResponse(
+        job_id=job_id,
+        status="queued",
+        created_at=datetime.utcnow(),
+        estimated_duration_seconds=120,
+        websocket_url=f"ws://localhost:{settings.api_port}/api/v1/jobs/{job_id}/stream"
+    )
+
+
+@app.post("/api/v1/transcribe/upload", response_model=TranscribeResponse, status_code=201)
+async def submit_file_transcription(
+    file: UploadFile = File(...),
+    instruments: str = Form('["piano"]'),
+    vocal_instrument: int = Form(40)  # Default to violin (program 40)
+):
+    """
+    Submit an audio file for transcription.
+
+    Args:
+        file: Audio file (WAV, MP3, FLAC, etc.)
+        instruments: JSON array of instruments (default: ["piano"])
+        vocal_instrument: MIDI program number for vocals (default: 40 = violin)
+
+    Returns:
+        Job information including job ID and WebSocket URL
+    """
+    print(f"[DEBUG] FastAPI received instruments parameter: {instruments!r}")
+    print(f"[DEBUG] FastAPI received vocal_instrument parameter: {vocal_instrument}")
+
+    # Validate file type
+    allowed_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'}
+    file_ext = Path(file.filename or '').suffix.lower()
+
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+        )
+
+    # Validate file size (max 100MB)
+    max_size = 100 * 1024 * 1024  # 100MB
+    content = await file.read()
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size: 100MB"
+        )
+
+    # Parse instruments option
+    try:
+        import json as json_module
+        print(f"[DEBUG] Received instruments parameter (raw): {instruments}")
+        instruments_list = json_module.loads(instruments)
+        print(f"[DEBUG] Parsed instruments list: {instruments_list}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to parse instruments, using default ['piano']. Error: {e}")
+        instruments_list = ["piano"]
+
+    # Create job
+    job_id = str(uuid4())
+
+    # Save uploaded file to storage
+    upload_dir = settings.storage_path / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = upload_dir / f"{job_id}{file_ext}"
+
+    with open(upload_path, "wb") as f:
+        f.write(content)
+
+    job_data = {
+        "job_id": job_id,
+        "status": "queued",
+        "upload_path": str(upload_path),
+        "original_filename": file.filename or "unknown",
+        "options": json.dumps({"instruments": instruments_list, "vocal_instrument": vocal_instrument}),
         "created_at": datetime.utcnow().isoformat(),
         "progress": 0,
         "current_stage": "queued",
