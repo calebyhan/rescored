@@ -55,19 +55,30 @@ class MAESTRODataset:
         with open(self.metadata_path, 'r') as f:
             data = json.load(f)
 
-        # MAESTRO JSON structure: list of column names + list of row values
-        # Convert to list of dicts for easier access
-        if isinstance(data, dict) and 'split' in data:
-            # Data is in column format: {"split": [...], "audio_filename": [...], ...}
-            keys = list(data.keys())
-            num_items = len(data[keys[0]])
-            return [
-                {key: data[key][i] for key in keys}
-                for i in range(num_items)
-            ]
+        # MAESTRO JSON structure can be:
+        # 1. Columnar format: {"split": [...], "audio_filename": [...], ...}
+        # 2. List of dicts: [{"split": "train", "audio_filename": "..."}, ...]
 
-        # Already in list format
-        return data
+        if isinstance(data, list):
+            # Already in list format
+            return data
+
+        if isinstance(data, dict):
+            # Check if it's columnar format (all values are lists of same length)
+            values = list(data.values())
+            if values and all(isinstance(v, list) for v in values):
+                # Columnar format - transpose to list of dicts
+                keys = list(data.keys())
+                num_items = len(values[0])
+                return [
+                    {key: data[key][i] for key in keys}
+                    for i in range(num_items)
+                ]
+            else:
+                # Single item dict - wrap in list
+                return [data]
+
+        raise ValueError(f"Unexpected MAESTRO JSON format: {type(data)}")
 
     def count_split(self, split: str) -> int:
         """Count recordings in a split."""
