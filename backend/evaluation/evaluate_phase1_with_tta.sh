@@ -57,7 +57,7 @@ if [ ! -d "$MAESTRO_ROOT" ]; then
     exit 1
 fi
 
-export PYTHONPATH="$RESCORED_DIR:$PYTHONPATH"
+export PYTHONPATH="$RESCORED_DIR:${PYTHONPATH:-}"
 
 # GPU info
 echo "GPU Information:"

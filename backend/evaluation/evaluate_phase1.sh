@@ -65,7 +65,7 @@ echo "Output directory: $OUTPUT_DIR"
 echo ""
 
 # Set Python path
-export PYTHONPATH="$RESCORED_DIR:$PYTHONPATH"
+export PYTHONPATH="$RESCORED_DIR:${PYTHONPATH:-}"
 
 # GPU info
 echo "GPU Information:"
