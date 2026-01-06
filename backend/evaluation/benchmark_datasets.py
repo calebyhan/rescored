@@ -55,6 +55,15 @@ class MAESTRODataset:
         with open(self.metadata_path, 'r') as f:
             data = json.load(f)
 
+        # Debug: Print structure info
+        print(f"DEBUG: MAESTRO JSON type: {type(data)}")
+        if isinstance(data, dict):
+            print(f"DEBUG: Dict keys: {list(data.keys())[:10]}")  # First 10 keys
+            first_key = list(data.keys())[0]
+            print(f"DEBUG: First key '{first_key}' value type: {type(data[first_key])}")
+            if isinstance(data[first_key], list):
+                print(f"DEBUG: First key has {len(data[first_key])} items")
+
         # MAESTRO JSON structure can be:
         # 1. Columnar format: {"split": [...], "audio_filename": [...], ...}
         # 2. List of dicts: [{"split": "train", "audio_filename": "..."}, ...]
@@ -70,12 +79,14 @@ class MAESTRODataset:
                 # Columnar format - transpose to list of dicts
                 keys = list(data.keys())
                 num_items = len(values[0])
+                print(f"DEBUG: Converting columnar format, {num_items} items")
                 return [
                     {key: data[key][i] for key in keys}
                     for i in range(num_items)
                 ]
             else:
                 # Single item dict - wrap in list
+                print(f"DEBUG: Wrapping single dict")
                 return [data]
 
         raise ValueError(f"Unexpected MAESTRO JSON format: {type(data)}")
