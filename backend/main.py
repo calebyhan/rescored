@@ -548,24 +548,36 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
             }
             await websocket.send_json(initial_update)
 
-        # Listen for updates asynchronously
+        # Send historical progress updates (important for eager mode where task executes before client connects)
+        progress_history = redis_client.lrange(f"job:{job_id}:progress_history", 0, -1)
+        for update_json in progress_history:
+            try:
+                update = json.loads(update_json)
+                await websocket.send_json(update)
+            except (json.JSONDecodeError, Exception):
+                continue
+
+        # Listen for new updates asynchronously
         async for message in pubsub.listen():
             if message['type'] == 'message':
-                update = json.loads(message['data'])
-                await websocket.send_json(update)
+                try:
+                    update = json.loads(message['data'])
+                    await websocket.send_json(update)
 
-                # Close connection if job completed
-                if update.get('type') == 'completed':
-                    break
-
-                # Close connection if job failed with non-retryable error
-                if update.get('type') == 'error':
-                    error_info = update.get('error', {})
-                    is_retryable = error_info.get('retryable', False)
-                    if not is_retryable:
-                        # Only close if error is permanent
+                    # Close connection if job completed
+                    if update.get('type') == 'completed':
                         break
-                    # If retryable, keep connection open for retry progress updates
+
+                    # Close connection if job failed with non-retryable error
+                    if update.get('type') == 'error':
+                        error_info = update.get('error', {})
+                        is_retryable = error_info.get('retryable', False)
+                        if not is_retryable:
+                            # Only close if error is permanent
+                            break
+                        # If retryable, keep connection open for retry progress updates
+                except (json.JSONDecodeError, Exception):
+                    continue
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, job_id)

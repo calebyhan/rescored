@@ -45,7 +45,7 @@ class TranscriptionTask(Task):
             "updated_at": datetime.utcnow().isoformat(),
         })
 
-        # Publish to pub/sub for WebSocket clients
+        # Store progress in a list for history (helps with eager mode where client connects late)
         update = {
             "type": "progress",
             "job_id": job_id,
@@ -54,8 +54,14 @@ class TranscriptionTask(Task):
             "message": message,
             "timestamp": datetime.utcnow().isoformat(),
         }
+        redis_client.rpush(f"job:{job_id}:progress_history", json.dumps(update))
+        
+        # Publish to pub/sub for WebSocket clients (in case they're already connected)
         num_subscribers = redis_client.publish(f"job:{job_id}:updates", json.dumps(update))
-        print(f"[PROGRESS] Published to {num_subscribers} subscribers")
+        if num_subscribers > 0:
+            print(f"[PROGRESS] Published to {num_subscribers} subscribers")
+        else:
+            print(f"[PROGRESS] Stored in history (no live subscribers)")
 
 
 @celery_app.task(base=TranscriptionTask, bind=True)
