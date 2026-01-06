@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-import redis
 import json
 import asyncio
 import tempfile
@@ -17,6 +16,7 @@ import os
 from typing import Optional
 from app_config import settings
 from app_utils import validate_youtube_url, check_video_availability
+from redis_client import get_redis_client, get_async_redis_client
 from tasks import process_transcription_task
 
 # YourMT3+ transcription service
@@ -34,16 +34,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Redis client (initialized before middleware)
-# Use fakeredis if USE_FAKE_REDIS environment variable is set
-if os.getenv('USE_FAKE_REDIS', '').lower() == 'true':
-    import fakeredis
-    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
-    async_redis_client = fakeredis.FakeAsyncRedis(decode_responses=True)
-    print("Using fakeredis for in-memory caching")
-else:
-    redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
-    async_redis_client = redis.asyncio.Redis.from_url(settings.redis_url, decode_responses=True)
+# Get shared Redis client singleton
+redis_client = get_redis_client()
+async_redis_client = get_async_redis_client()
 
 # YourMT3+ transcriber (loaded on startup)
 yourmt3_transcriber: Optional[YourMT3Transcriber] = None
