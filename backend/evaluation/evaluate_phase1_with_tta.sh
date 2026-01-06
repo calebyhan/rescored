@@ -49,7 +49,7 @@ cd "$RESCORED_DIR"
 # Load modules
 echo "Loading modules..."
 module load anaconda
-source activate /work/users/c/a/calebhan/.venv
+source activate /work/users/c/a/calebhan/rescored/rescored/backend/.venv
 
 # Verify MAESTRO
 if [ ! -d "$MAESTRO_ROOT" ]; then
