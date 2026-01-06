@@ -55,6 +55,18 @@ class MAESTRODataset:
         with open(self.metadata_path, 'r') as f:
             data = json.load(f)
 
+        # MAESTRO JSON structure: list of column names + list of row values
+        # Convert to list of dicts for easier access
+        if isinstance(data, dict) and 'split' in data:
+            # Data is in column format: {"split": [...], "audio_filename": [...], ...}
+            keys = list(data.keys())
+            num_items = len(data[keys[0]])
+            return [
+                {key: data[key][i] for key in keys}
+                for i in range(num_items)
+            ]
+
+        # Already in list format
         return data
 
     def count_split(self, split: str) -> int:
