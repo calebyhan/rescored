@@ -50,7 +50,7 @@ cd "$RESCORED_DIR"
 # Load required modules
 echo "Loading modules..."
 module load anaconda
-source activate /work/users/c/a/calebhan/rescored/rescored/backend/.venv
+source activate .venv
 
 # Verify MAESTRO dataset exists
 if [ ! -d "$MAESTRO_ROOT" ]; then
