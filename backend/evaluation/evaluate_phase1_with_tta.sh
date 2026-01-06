@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=phase1_tta
-#SBATCH --output=../../../logs/slurm/phase1_tta_%j.log
-#SBATCH --error=../../../logs/slurm/phase1_tta_%j.err
+#SBATCH --output=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_tta_%j.log
+#SBATCH --error=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_tta_%j.err
 #SBATCH --time=5-00:00:00              # 5 days for TTA evaluation (very slow!)
 #SBATCH --cpus-per-task=8              # 8 CPUs
 #SBATCH --mem=64G                      # 64GB RAM (TTA needs more memory)
@@ -48,22 +48,8 @@ cd "$RESCORED_DIR"
 
 # Load modules
 echo "Loading modules..."
-module load python/3.10
-module load cuda/11.8
-
-# Activate virtual environment
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python -m venv venv
-fi
-
-source venv/bin/activate
-
-# Install dependencies
-echo "Installing dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install mir_eval
+module load anaconda
+source activate /work/users/c/a/calebhan/.venv
 
 # Verify MAESTRO
 if [ ! -d "$MAESTRO_ROOT" ]; then

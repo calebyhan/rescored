@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=phase1_eval
-#SBATCH --output=../../../logs/slurm/phase1_eval_%j.log
-#SBATCH --error=../../../logs/slurm/phase1_eval_%j.err
+#SBATCH --output=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_eval_%j.log
+#SBATCH --error=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_eval_%j.err
 #SBATCH --time=2-00:00:00              # 2 days (should be sufficient for full test split)
 #SBATCH --cpus-per-task=8              # 8 CPUs for parallel processing
 #SBATCH --mem=32G                      # 32GB RAM for transcription models
@@ -47,26 +47,10 @@ OUTPUT_DIR="$WORK_DIR/rescored/backend/evaluation/results"
 # Navigate to project directory
 cd "$RESCORED_DIR"
 
-# Load required modules (adjust based on Longleaf configuration)
+# Load required modules
 echo "Loading modules..."
-module load python/3.10
-module load cuda/11.8  # Adjust CUDA version as needed
-
-# Check if virtual environment exists, create if not
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python -m venv venv
-fi
-
-# Activate virtual environment
-echo "Activating virtual environment..."
-source venv/bin/activate
-
-# Install/upgrade dependencies
-echo "Installing dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install mir_eval  # For evaluation metrics
+module load anaconda
+source activate /work/users/c/a/calebhan/.venv
 
 # Verify MAESTRO dataset exists
 if [ ! -d "$MAESTRO_ROOT" ]; then
