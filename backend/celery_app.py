@@ -1,6 +1,7 @@
 """Celery application configuration."""
 import sys
 from pathlib import Path
+import os
 
 # Ensure backend directory is in Python path for imports
 backend_dir = Path(__file__).parent.resolve()
@@ -13,13 +14,15 @@ from app_config import settings
 
 # Determine broker and backend based on configuration
 if settings.use_fake_redis:
-    # Use in-memory broker for development/HF Spaces
+    # Use eager mode for HF Spaces - execute tasks synchronously
     broker_url = "memory://"
     backend_url = "cache+memory://"
+    task_always_eager = True
 else:
     # Use Redis for production
     broker_url = settings.redis_url
     backend_url = settings.redis_url
+    task_always_eager = False
 
 # Initialize Celery
 celery_app = Celery(
@@ -34,6 +37,11 @@ celery_app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     timezone="UTC",
+    enable_utc=True,
+    
+    # Eager mode for HF Spaces (synchronous execution)
+    task_always_eager=task_always_eager,
+    task_eager_propagates=True,
     enable_utc=True,
 
     # Task settings
