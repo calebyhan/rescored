@@ -19,6 +19,7 @@ torch>=2.0.0
 torchaudio>=2.0.0
 demucs>=3.0.6
 audio-separator>=0.40.0  # BS-RoFormer and UVR models for better vocal separation
+onnxruntime>=1.16.0  # Required by audio-separator for ONNX models
 
 # YourMT3+ Transcription (primary transcriber)
 lightning>=2.2.1
