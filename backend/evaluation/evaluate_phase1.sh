@@ -167,4 +167,4 @@ echo "Duration: $SECONDS seconds"
 echo "========================================"
 
 # Deactivate virtual environment
-deactivate
+conda deactivate

@@ -73,17 +73,32 @@ class MAESTRODataset:
             return data
 
         if isinstance(data, dict):
-            # Check if it's columnar format (all values are lists of same length)
             values = list(data.values())
+
+            # Check if it's columnar format with lists
             if values and all(isinstance(v, list) for v in values):
                 # Columnar format - transpose to list of dicts
                 keys = list(data.keys())
                 num_items = len(values[0])
-                print(f"DEBUG: Converting columnar format, {num_items} items")
+                print(f"DEBUG: Converting columnar list format, {num_items} items")
                 return [
                     {key: data[key][i] for key in keys}
                     for i in range(num_items)
                 ]
+
+            # Check if it's columnar format with nested dicts (indexed by string keys)
+            elif values and all(isinstance(v, dict) for v in values):
+                # Nested dict format: {"column": {"0": val1, "1": val2, ...}}
+                keys = list(data.keys())
+                first_column = data[keys[0]]
+                indices = sorted(first_column.keys(), key=lambda x: int(x) if x.isdigit() else x)
+                num_items = len(indices)
+                print(f"DEBUG: Converting columnar dict format, {num_items} items")
+                return [
+                    {key: data[key][idx] for key in keys}
+                    for idx in indices
+                ]
+
             else:
                 # Single item dict - wrap in list
                 print(f"DEBUG: Wrapping single dict")

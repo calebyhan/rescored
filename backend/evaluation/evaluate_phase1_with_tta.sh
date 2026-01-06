@@ -113,4 +113,4 @@ echo ""
 echo "End time: $(date)"
 echo "Duration: $SECONDS seconds ($((SECONDS/3600)) hours)"
 
-deactivate
+conda deactivate
