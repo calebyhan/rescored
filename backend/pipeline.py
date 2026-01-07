@@ -35,7 +35,7 @@ except ImportError as e:
 
 # Import wrapper modules at top level
 try:
-    from audio_separator_wrapper import AudioSeparator
+    from backend.audio_separator_wrapper import AudioSeparator
     AUDIO_SEPARATOR_AVAILABLE = True
 except ImportError as e:
     AUDIO_SEPARATOR_AVAILABLE = False
@@ -43,7 +43,7 @@ except ImportError as e:
     print(f"WARNING: audio_separator_wrapper not available: {e}")
 
 try:
-    from yourmt3_wrapper import YourMT3Transcriber
+    from backend.yourmt3_wrapper import YourMT3Transcriber
     YOURMT3_AVAILABLE = True
 except ImportError as e:
     YOURMT3_AVAILABLE = False
@@ -51,7 +51,7 @@ except ImportError as e:
     print(f"WARNING: yourmt3_wrapper not available: {e}")
 
 try:
-    from bytedance_wrapper import ByteDanceTranscriber
+    from backend.bytedance_wrapper import ByteDanceTranscriber
     BYTEDANCE_AVAILABLE = True
 except ImportError as e:
     BYTEDANCE_AVAILABLE = False
@@ -59,7 +59,7 @@ except ImportError as e:
     print(f"WARNING: bytedance_wrapper not available: {e}")
 
 try:
-    from ensemble_transcriber import EnsembleTranscriber
+    from backend.ensemble_transcriber import EnsembleTranscriber
     ENSEMBLE_AVAILABLE = True
 except ImportError as e:
     ENSEMBLE_AVAILABLE = False
