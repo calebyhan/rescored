@@ -46,28 +46,12 @@ def create_transcriber(config: Settings, use_tta: bool = False):
         )
 
         # Simplified pipeline for evaluation:
-        # 1. Preprocess audio (optional)
-        # 2. Separate sources (get piano stem)
-        # 3. Transcribe with ensemble (+TTA if enabled)
+        # MAESTRO is already solo piano, so skip source separation
 
         try:
-            # Preprocess
-            if config.enable_audio_preprocessing:
-                processed_audio = pipeline.preprocess_audio(audio_path)
-            else:
-                processed_audio = audio_path
-
-            # Source separation
-            stems = pipeline.separate_sources(processed_audio)
-
-            # Select piano stem (or 'other' if no dedicated piano)
-            piano_stem = stems.get('piano') or stems.get('other')
-
-            if piano_stem is None or not piano_stem.exists():
-                raise ValueError("No piano/other stem found in separation output")
-
-            # Transcribe
-            midi_path = pipeline.transcribe_with_ensemble(piano_stem)
+            # For MAESTRO: Audio is already piano-only, transcribe directly
+            # Skip preprocessing and source separation
+            midi_path = pipeline.transcribe_with_ensemble(audio_path)
 
             # Copy to output dir
             final_path = output_dir / midi_path.name
