@@ -603,6 +603,9 @@ class TranscriptionPipeline:
         except Exception as e:
             # Fallback to YourMT3+ only if ensemble fails
             print(f"   ⚠ Ensemble transcription failed: {e}")
+            # Print full traceback for debugging
+            import traceback
+            traceback.print_exc()
             print(f"   Falling back to YourMT3+ only...")
             return self.transcribe_with_yourmt3(audio_path)
 
