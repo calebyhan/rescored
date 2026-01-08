@@ -99,12 +99,16 @@ class ByteDanceTranscriber:
 
         print(f"   Transcribing with ByteDance: {audio_path.name}")
 
-        # Load audio
-        (audio, _) = load_audio(
-            str(audio_path),
-            sr=self.sample_rate,
-            mono=True
-        )
+        # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
+        import soundfile as sf
+        import librosa
+        audio, sr = sf.read(str(audio_path), dtype='float32')
+        # Convert to mono if stereo
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+        # Resample if needed
+        if sr != self.sample_rate:
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=self.sample_rate)
 
         # Transcribe
         # ByteDance outputs:
@@ -152,12 +156,16 @@ class ByteDanceTranscriber:
 
         midi_path = output_dir / f"{audio_path.stem}_bytedance.mid"
 
-        # Load audio
-        (audio, _) = load_audio(
-            str(audio_path),
-            sr=self.sample_rate,
-            mono=True
-        )
+        # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
+        import soundfile as sf
+        import librosa
+        audio, sr = sf.read(str(audio_path), dtype='float32')
+        # Convert to mono if stereo
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+        # Resample if needed
+        if sr != self.sample_rate:
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=self.sample_rate)
 
         # Transcribe and get full output
         print(f"   Transcribing with ByteDance (with confidence): {audio_path.name}")
