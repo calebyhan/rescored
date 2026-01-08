@@ -36,6 +36,7 @@ gradio_log
 music21==9.3.0
 mido==1.3.3
 pretty_midi==0.2.10  # For evaluation metrics
+piano-transcription-inference  # ByteDance piano transcription (for ensemble)
 
 # Data Analysis
 pandas>=2.0.0  # For benchmark result analysis
