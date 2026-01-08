@@ -72,9 +72,10 @@ class Settings(BaseSettings):
     enable_tie_notation: bool = True  # Deprecated (was only used by old generate_musicxml)
 
     # Phase 2: Zero-Tradeoff Solutions
-    # Python compatibility: madmom runtime patch enables Python 3.10+ support
-    use_madmom_tempo_detection: bool = True  # Multi-scale tempo (eliminates octave errors)
-    use_beat_synchronous_quantization: bool = True  # Beat-aligned quantization (eliminates double quantization)
+    # Essentia replaces madmom for numpy 2.x compatibility (professional-grade tempo/beat detection)
+    use_essentia_tempo_detection: bool = True  # Use Essentia RhythmExtractor2013 (replaces madmom)
+    use_madmom_tempo_detection: bool = False  # DISABLED: madmom incompatible with numpy 2.x
+    use_beat_synchronous_quantization: bool = False  # TODO: Implement with Essentia beats
 
     # Transcription Service Configuration
     use_yourmt3_transcription: bool = True  # Deprecated (always True now - YourMT3+ is only transcriber)
