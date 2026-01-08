@@ -2,11 +2,11 @@
 #SBATCH --job-name=phase1_tta
 #SBATCH --output=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_tta_%j.log
 #SBATCH --error=/work/users/c/a/calebhan/rescored/logs/slurm/phase1_tta_%j.err
-#SBATCH --time=5-00:00:00              # 5 days for TTA evaluation (very slow!)
+#SBATCH --time=5-00:00:00              # 5 days max (adjust based on mode)
 #SBATCH --cpus-per-task=8              # 8 CPUs
 #SBATCH --mem=64G                      # 64GB RAM (TTA needs more memory)
-#SBATCH --partition=l40-gpu                # GPU partition
-#SBATCH --qos=gpu_access             # Required QoS
+#SBATCH --partition=l40-gpu            # GPU partition
+#SBATCH --qos=gpu_access               # Required QoS
 #SBATCH --gres=gpu:1                   # 1 GPU (A100 preferred)
 
 
@@ -22,16 +22,35 @@
 # - Phase 1.1 (Confidence): 91-96% F1 (+1-2%)
 # - Phase 1.2 (+ TTA): 92-97% F1 (+2-3%)
 #
-# Total runtime: ~15-20 hours
+# Usage:
+#   sbatch evaluate_phase1_with_tta.sh           # Run all models (15-20 hours)
+#   sbatch evaluate_phase1_with_tta.sh tta-only  # Run only TTA (5-7 hours)
+#
+# Total runtime: ~15-20 hours (all), ~5-7 hours (tta-only)
 ################################################################################
 
 set -e
 set -u
 
+# Parse command line arguments
+TTA_ONLY_MODE=${1:-""}  # First argument, empty if not provided
+
+# Determine which models to run
+if [ "$TTA_ONLY_MODE" = "tta-only" ]; then
+    MODELS="phase1.2"
+    EXPECTED_TIME="5-7 hours"
+    MODE_DESC="TTA ONLY"
+else
+    MODELS="all"
+    EXPECTED_TIME="15-20 hours"
+    MODE_DESC="ALL MODELS"
+fi
+
 echo "========================================"
-echo "Phase 1 Full Evaluation (WITH TTA)"
+echo "Phase 1 Evaluation (${MODE_DESC})"
 echo "========================================"
-echo "⚠️  This will take ~15-20 hours!"
+echo "⚠️  Expected runtime: ${EXPECTED_TIME}"
+echo "Models: ${MODELS}"
 echo "Start time: $(date)"
 echo "Hostname: $(hostname)"
 echo "Job ID: $SLURM_JOB_ID"
@@ -69,15 +88,24 @@ echo ""
 ################################################################################
 
 echo "========================================"
-echo "Starting FULL Evaluation with TTA"
+echo "Starting Evaluation: ${MODE_DESC}"
 echo "========================================"
 echo ""
-echo "Models to evaluate:"
-echo "  1. Baseline (no confidence, no TTA)"
-echo "  2. Phase 1.1 (confidence filtering)"
-echo "  3. Phase 1.2 (confidence + TTA) ⚠️  SLOW!"
+
+if [ "$TTA_ONLY_MODE" = "tta-only" ]; then
+    echo "Models to evaluate:"
+    echo "  - Phase 1.2 ONLY (confidence + TTA) ⚠️  SLOW!"
+    echo ""
+    echo "Skipping baseline and phase1.1 (already evaluated)"
+else
+    echo "Models to evaluate:"
+    echo "  1. Baseline (no confidence, no TTA)"
+    echo "  2. Phase 1.1 (confidence filtering)"
+    echo "  3. Phase 1.2 (confidence + TTA) ⚠️  SLOW!"
+fi
+
 echo ""
-echo "Expected duration: 15-20 hours"
+echo "Expected duration: ${EXPECTED_TIME}"
 echo "========================================"
 echo ""
 
@@ -85,7 +113,7 @@ python -m backend.evaluation.run_evaluation \
     --dataset maestro \
     --dataset-root "$MAESTRO_ROOT" \
     --split test \
-    --models all \
+    --models $MODELS \
     --output-dir "$OUTPUT_DIR"
 
 if [ $? -eq 0 ]; then
