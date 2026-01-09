@@ -227,6 +227,9 @@ def process_transcription_task(self, job_id: str):
             "key_signature": "C",
         })
 
+        # Get list of successfully transcribed instruments
+        transcribed_instruments = list(stems_to_transcribe.keys())
+
         # Cleanup temp files (pipeline has its own cleanup method)
         pipeline.cleanup()
 
@@ -236,6 +239,7 @@ def process_transcription_task(self, job_id: str):
             "progress": 100,
             "midi_path": str(output_midi_path.absolute()) if temp_midi_path.exists() else "",
             "metadata": json.dumps(metadata),
+            "instruments": json.dumps(transcribed_instruments),
             "completed_at": datetime.utcnow().isoformat(),
         })
 

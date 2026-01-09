@@ -177,6 +177,7 @@ class JobStatusResponse(BaseModel):
     failed_at: str | None
     error: dict | None
     result_url: str | None
+    instruments: list[str] | None = None  # List of transcribed instruments
 
 
 # === WebSocket Connection Manager ===
@@ -403,6 +404,14 @@ async def get_job_status(job_id: str):
     if job_data.get('status') == 'completed':
         result_url = f"/api/v1/scores/{job_id}"
 
+    # Parse instruments list if available
+    instruments = None
+    if 'instruments' in job_data:
+        try:
+            instruments = json.loads(job_data['instruments'])
+        except json.JSONDecodeError:
+            instruments = None
+
     return JobStatusResponse(
         job_id=job_id,
         status=job_data.get('status', 'unknown'),
@@ -414,7 +423,8 @@ async def get_job_status(job_id: str):
         completed_at=job_data.get('completed_at'),
         failed_at=job_data.get('failed_at'),
         error=error,
-        result_url=result_url
+        result_url=result_url,
+        instruments=instruments
     )
 
 

@@ -131,6 +131,34 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
     }
   };
 
+  const handleExportAllInstruments = async () => {
+    try {
+      const { scores, availableInstruments } = useNotationStore.getState();
+      const { generateMidiFromScore } = await import('../utils/midi-exporter');
+
+      // Export each instrument separately
+      for (const instrument of availableInstruments) {
+        const instrumentScore = scores.get(instrument);
+        if (!instrumentScore) continue;
+
+        const midiData = generateMidiFromScore(instrumentScore);
+        const blob = new Blob([midiData], { type: 'audio/midi' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `score_${instrument}_edited.mid`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Small delay between downloads to prevent browser blocking
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } catch (err) {
+      console.error('Failed to export all instruments:', err);
+      alert('Failed to export MIDI files');
+    }
+  };
+
   if (loading) {
     return <div className="score-editor loading">Loading score...</div>;
   }
@@ -218,8 +246,15 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
         {/* Actions Footer */}
         <div className="sidebar-actions">
-          <button onClick={handleExportMIDI}>Export MIDI</button>
-          <button className="primary">Export MusicXML (Soon)</button>
+          <button onClick={handleExportMIDI} className="primary">
+            Export Current Instrument (MIDI)
+          </button>
+          {instruments.length > 1 && (
+            <button onClick={handleExportAllInstruments}>
+              Export All Instruments
+            </button>
+          )}
+          <button className="secondary">Export MusicXML (Soon)</button>
         </div>
       </aside>
 
