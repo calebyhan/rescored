@@ -220,6 +220,25 @@ def process_transcription_task(self, job_id: str):
         else:
             print(f"[DEBUG] WARNING: No MIDI file found at {temp_midi_path}!")
 
+        # Save individual stem MIDIs if available (for per-instrument download)
+        stem_midi_paths = {}
+        if hasattr(pipeline, 'stem_midis') and pipeline.stem_midis:
+            print(f"[DEBUG] Saving {len(pipeline.stem_midis)} individual stem MIDIs")
+            for stem_name, stem_midi_path in pipeline.stem_midis.items():
+                if stem_midi_path and stem_midi_path.exists():
+                    output_stem_path = settings.outputs_path / f"{job_id}_{stem_name}.mid"
+                    shutil.copy(str(stem_midi_path), str(output_stem_path))
+                    stem_midi_paths[stem_name] = str(output_stem_path.absolute())
+                    print(f"[DEBUG] Saved {stem_name} MIDI to {output_stem_path}")
+        elif len(stems_to_transcribe) == 1:
+            # Single instrument - store it as its own stem MIDI
+            single_instrument = list(stems_to_transcribe.keys())[0]
+            if temp_midi_path.exists():
+                output_stem_path = settings.outputs_path / f"{job_id}_{single_instrument}.mid"
+                shutil.copy(str(temp_midi_path), str(output_stem_path))
+                stem_midi_paths[single_instrument] = str(output_stem_path.absolute())
+                print(f"[DEBUG] Saved single instrument {single_instrument} MIDI to {output_stem_path}")
+
         # Store metadata for API access
         metadata = getattr(pipeline, 'metadata', {
             "tempo": 120.0,
@@ -240,6 +259,7 @@ def process_transcription_task(self, job_id: str):
             "midi_path": str(output_midi_path.absolute()) if temp_midi_path.exists() else "",
             "metadata": json.dumps(metadata),
             "instruments": json.dumps(transcribed_instruments),
+            "stem_midis": json.dumps(stem_midi_paths),  # Store individual instrument MIDI paths
             "completed_at": datetime.utcnow().isoformat(),
         })
 

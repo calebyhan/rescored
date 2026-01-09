@@ -377,6 +377,9 @@ class TranscriptionPipeline:
             stem_midis[stem_name] = midi_path
             print(f"   [Stem {stem_name}] ✓ Complete")
 
+        # Store individual stem MIDIs for later access
+        self.stem_midis = stem_midis
+
         # Combine all MIDI files
         print(f"   Combining {len(stem_midis)} MIDI files...")
         combined_pm = pretty_midi.PrettyMIDI()

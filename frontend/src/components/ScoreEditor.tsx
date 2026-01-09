@@ -2,7 +2,7 @@
  * Main score editor component integrating notation, playback, and export.
  * Supports multi-instrument transcription.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getMidiFile, getMetadata, getJobStatus } from '../api/client';
 import { useNotationStore } from '../store/notation';
 import { NotationCanvas } from './NotationCanvas';
@@ -27,10 +27,81 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const setTempo = useNotationStore((state) => state.setTempo);
   const selectNote = useNotationStore((state) => state.selectNote);
   const selectedNoteIds = useNotationStore((state) => state.selectedNoteIds);
+  const updateNote = useNotationStore((state) => state.updateNote);
+
+  // Undo/Redo
+  const undo = useNotationStore((state) => state.undo);
+  const redo = useNotationStore((state) => state.redo);
+  const canUndo = useNotationStore((state) => state.canUndo);
+  const canRedo = useNotationStore((state) => state.canRedo);
+
+  // Copy/Paste
+  const copyNotes = useNotationStore((state) => state.copyNotes);
+  const hasClipboard = useNotationStore((state) => state.hasClipboard);
+
+  // Pitch editing functions (must be defined before useEffect that uses them)
+  const handlePitchUp = useCallback(() => {
+    if (!score) return;
+    selectedNoteIds.forEach((noteId) => {
+      const note = findNoteById(score, noteId);
+      if (note && !note.isRest) {
+        const newPitch = transposePitch(note.pitch, 1); // +1 semitone
+        if (newPitch) {
+          updateNote(noteId, { pitch: newPitch });
+        }
+      }
+    });
+  }, [score, selectedNoteIds, updateNote]);
+
+  const handlePitchDown = useCallback(() => {
+    if (!score) return;
+    selectedNoteIds.forEach((noteId) => {
+      const note = findNoteById(score, noteId);
+      if (note && !note.isRest) {
+        const newPitch = transposePitch(note.pitch, -1); // -1 semitone
+        if (newPitch) {
+          updateNote(noteId, { pitch: newPitch });
+        }
+      }
+    });
+  }, [score, selectedNoteIds, updateNote]);
 
   useEffect(() => {
     loadScore();
   }, [jobId]);
+
+  // Keyboard shortcuts for undo/redo and pitch editing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Undo/Redo
+      if (cmdOrCtrl && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) undo();
+      } else if (cmdOrCtrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo()) redo();
+      }
+      // Copy (only if notes are selected)
+      else if (cmdOrCtrl && e.key === 'c' && selectedNoteIds.length > 0) {
+        e.preventDefault();
+        copyNotes();
+      }
+      // Pitch editing (only if notes are selected)
+      else if (selectedNoteIds.length > 0 && e.key === 'ArrowUp') {
+        e.preventDefault();
+        handlePitchUp();
+      } else if (selectedNoteIds.length > 0 && e.key === 'ArrowDown') {
+        e.preventDefault();
+        handlePitchDown();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, canUndo, canRedo, selectedNoteIds, handlePitchUp, handlePitchDown, copyNotes]);
 
   const loadScore = async () => {
     try {
@@ -232,6 +303,17 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
             <PlaybackControls />
           </div>
 
+          {/* Quick Add Note */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Quick Add</h3>
+            <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+              <p style={{ margin: '0 0 0.5rem 0' }}>Press 'A' key to enable Add Mode</p>
+              <p style={{ margin: '0', color: '#9ca3af', fontSize: '0.8rem' }}>
+                Then click on staff to add notes
+              </p>
+            </div>
+          </div>
+
           {/* Quick Tips */}
           <div className="sidebar-section">
             <h3 className="sidebar-section-title">Quick Tips</h3>
@@ -260,6 +342,59 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
       {/* Right Main Area - Notation Canvas */}
       <main className="editor-main">
+        {/* Toolbar */}
+        <div className="editor-toolbar">
+          <div className="toolbar-group">
+            <button
+              onClick={() => undo()}
+              disabled={!canUndo()}
+              className="toolbar-button"
+              title="Undo (Ctrl+Z)"
+            >
+              ↶ Undo
+            </button>
+            <button
+              onClick={() => redo()}
+              disabled={!canRedo()}
+              className="toolbar-button"
+              title="Redo (Ctrl+Y)"
+            >
+              ↷ Redo
+            </button>
+          </div>
+
+          {selectedNoteIds.length > 0 && (
+            <>
+              <div className="toolbar-group">
+                <button
+                  onClick={() => copyNotes()}
+                  className="toolbar-button"
+                  title="Copy (Ctrl+C)"
+                >
+                  📋 Copy
+                </button>
+              </div>
+
+              <div className="toolbar-group">
+                <button
+                  onClick={handlePitchUp}
+                  className="toolbar-button"
+                  title="Increase Pitch (↑)"
+                >
+                  ↑ Pitch Up
+                </button>
+                <button
+                  onClick={handlePitchDown}
+                  className="toolbar-button"
+                  title="Decrease Pitch (↓)"
+                >
+                  ↓ Pitch Down
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="editor-main-content">
           <NotationCanvas
             interactive={true}
@@ -273,6 +408,60 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 }
 
 // Helper functions
+
+// Find note by ID in score
+function findNoteById(score: any, noteId: string): any | null {
+  for (const part of score.parts) {
+    for (const measure of part.measures) {
+      const note = measure.notes.find((n: any) => n.id === noteId);
+      if (note) return note;
+    }
+  }
+  // Fallback: check legacy measures array
+  for (const measure of score.measures || []) {
+    const note = measure.notes.find((n: any) => n.id === noteId);
+    if (note) return note;
+  }
+  return null;
+}
+
+// Transpose pitch by semitones
+function transposePitch(pitch: string, semitones: number): string | null {
+  const match = pitch.match(/^([A-G])([#b]?)(\d+)$/);
+  if (!match) return null;
+
+  const [, noteName, accidental, octaveStr] = match;
+  const octave = parseInt(octaveStr);
+
+  // Map note names to MIDI numbers within an octave
+  const noteMap: Record<string, number> = {
+    'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
+  };
+
+  // Calculate current MIDI number
+  let midiNumber = (octave + 1) * 12 + noteMap[noteName];
+  if (accidental === '#') midiNumber += 1;
+  if (accidental === 'b') midiNumber -= 1;
+
+  // Apply transposition
+  midiNumber += semitones;
+
+  // Clamp to valid MIDI range (0-127)
+  if (midiNumber < 0 || midiNumber > 127) return null;
+
+  // Convert back to pitch string
+  const newOctave = Math.floor(midiNumber / 12) - 1;
+  const pitchClass = midiNumber % 12;
+
+  // Map pitch class to note name (prefer naturals, then sharps)
+  const pitchClassMap: Record<number, string> = {
+    0: 'C', 1: 'C#', 2: 'D', 3: 'D#', 4: 'E', 5: 'F',
+    6: 'F#', 7: 'G', 8: 'G#', 9: 'A', 10: 'A#', 11: 'B'
+  };
+
+  return pitchClassMap[pitchClass] + newOctave;
+}
+
 function getInstrumentIcon(instrument: string): string {
   const icons: Record<string, string> = {
     piano: '🎹',

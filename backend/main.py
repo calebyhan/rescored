@@ -431,7 +431,7 @@ async def get_job_status(job_id: str):
 @app.get("/api/v1/midi/{job_id}")
 async def download_midi(job_id: str):
     """
-    Download MIDI file.
+    Download combined MIDI file (all instruments).
 
     For MVP, this returns the cleaned MIDI from transcription (piano_clean.mid).
 
@@ -458,6 +458,51 @@ async def download_midi(job_id: str):
         path=file_path,
         media_type="audio/midi",
         filename=f"score_{job_id}.mid"
+    )
+
+
+@app.get("/api/v1/midi/{job_id}/{instrument}")
+async def download_instrument_midi(job_id: str, instrument: str):
+    """
+    Download MIDI file for a specific instrument.
+
+    Args:
+        job_id: Job identifier
+        instrument: Instrument name (e.g., 'piano', 'vocals', 'drums')
+
+    Returns:
+        MIDI file for the specified instrument
+    """
+    job_data = redis_client.hgetall(f"job:{job_id}")
+
+    if not job_data or job_data.get('status') != 'completed':
+        raise HTTPException(status_code=404, detail="Job not found or not completed")
+
+    # Get stem MIDI paths
+    stem_midis_str = job_data.get('stem_midis')
+    if not stem_midis_str:
+        raise HTTPException(status_code=404, detail="Per-instrument MIDI not available")
+
+    try:
+        stem_midis = json.loads(stem_midis_str)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Invalid stem MIDI data")
+
+    if instrument not in stem_midis:
+        available = ', '.join(stem_midis.keys())
+        raise HTTPException(
+            status_code=404,
+            detail=f"Instrument '{instrument}' not found. Available: {available}"
+        )
+
+    file_path = Path(stem_midis[instrument])
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="MIDI file not found on disk")
+
+    return FileResponse(
+        path=file_path,
+        media_type="audio/midi",
+        filename=f"score_{job_id}_{instrument}.mid"
     )
 
 
