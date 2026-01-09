@@ -29,7 +29,6 @@ interface JobProgress {
 
 interface ScoreStoreState {
   // Core state
-  musicXML: string | null;
   parsedScore: any | null;
   jobId: string | null;
   selectedNotes: string[];
@@ -46,7 +45,6 @@ interface ScoreStoreState {
   jobProgress: JobProgress;
 
   // Actions
-  setMusicXML: (xml: string | null) => void;
   setParsedScore: (parsed: any | null) => void;
   setJobId: (id: string | null) => void;
   reset: () => void;
@@ -80,7 +78,6 @@ function clampTempo(bpm: number) {
 }
 
 export const useScoreStore = create<ScoreStoreState>((set, get) => ({
-  musicXML: null,
   parsedScore: null,
   jobId: null,
   selectedNotes: [],
@@ -92,21 +89,14 @@ export const useScoreStore = create<ScoreStoreState>((set, get) => ({
   metadata: {},
   jobProgress: { progress: 0, stage: undefined, message: undefined, error: null },
 
-  setMusicXML: (xml) => {
-    set({ musicXML: xml });
-    try {
-      localStorage.setItem('score-store', JSON.stringify({ state: { musicXML: xml, jobId: get().jobId } }));
-    } catch {}
-  },
   setParsedScore: (parsed) => set({ parsedScore: parsed }),
   setJobId: (id) => {
     set({ jobId: id });
     try {
-      localStorage.setItem('score-store', JSON.stringify({ state: { jobId: id, musicXML: get().musicXML } }));
+      localStorage.setItem('score-store', JSON.stringify({ state: { jobId: id } }));
     } catch {}
   },
   reset: () => set({
-    musicXML: null,
     parsedScore: null,
     jobId: null,
     selectedNotes: [],

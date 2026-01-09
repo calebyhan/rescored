@@ -1,11 +1,12 @@
 /**
  * MIDI Parser - Converts MIDI files to internal Score format
  *
- * This bypasses MusicXML entirely to preserve YourMT3+ transcription accuracy.
+ * This parses MIDI directly to preserve YourMT3+ transcription accuracy.
  */
 
 import { Midi } from '@tonejs/midi';
 import type { Score, Part, Measure, Note } from '../store/notation';
+import { intelligentStaffSplit, type MidiNote as StaffSplitterMidiNote } from './staff-splitter';
 
 export interface MidiParseOptions {
   tempo?: number;
@@ -13,6 +14,7 @@ export interface MidiParseOptions {
   keySignature?: string;
   splitAtMiddleC?: boolean; // For grand staff (treble + bass)
   middleCNote?: number; // MIDI note number for staff split (default: 60)
+  useIntelligentSplit?: boolean; // Use intelligent clustering instead of simple middle C split (default: true)
 }
 
 /**
@@ -42,7 +44,8 @@ export async function parseMidiFile(
     measureDuration,
     options.splitAtMiddleC ?? true,
     options.middleCNote ?? 60,
-    tempo
+    tempo,
+    options.useIntelligentSplit ?? true
   );
 
   return {
@@ -95,12 +98,40 @@ function createPartsFromNotes(
   measureDuration: number,
   splitStaff: boolean,
   middleCNote: number,
-  tempo: number
+  tempo: number,
+  useIntelligentSplit: boolean = true
 ): Part[] {
   if (splitStaff) {
-    // Split into treble (>= middle C) and bass (< middle C)
-    const trebleNotes = notes.filter((n) => n.midi >= middleCNote);
-    const bassNotes = notes.filter((n) => n.midi < middleCNote);
+    let trebleNotes: MidiNote[];
+    let bassNotes: MidiNote[];
+
+    if (useIntelligentSplit && notes.length > 0) {
+      // Use intelligent clustering-based split
+      try {
+        const splitterNotes: StaffSplitterMidiNote[] = notes.map(n => ({
+          midi: n.midi,
+          time: n.time,
+          duration: n.duration,
+          velocity: n.velocity,
+        }));
+
+        const result = intelligentStaffSplit(splitterNotes, {
+          fallbackSplit: middleCNote,
+        });
+
+        trebleNotes = result.trebleNotes;
+        bassNotes = result.bassNotes;
+      } catch (error) {
+        console.warn('Intelligent split failed, falling back to middle C:', error);
+        // Fallback to simple split
+        trebleNotes = notes.filter((n) => n.midi >= middleCNote);
+        bassNotes = notes.filter((n) => n.midi < middleCNote);
+      }
+    } else {
+      // Simple split at middle C
+      trebleNotes = notes.filter((n) => n.midi >= middleCNote);
+      bassNotes = notes.filter((n) => n.midi < middleCNote);
+    }
 
     return [
       {

@@ -1,148 +1,301 @@
+/* Modern centered layout with hero section */
 .job-submission {
-  max-width: 600px;
-  margin: 0 auto;
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 2rem;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
-.job-submission h1 {
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+/* Hero section */
+.hero-section {
+  text-align: center;
+  max-width: 700px;
+  margin-bottom: 3rem;
 }
 
+.hero-title {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 1rem 0;
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: 1.25rem;
+  color: #6b7280;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.6;
+}
+
+.hero-description {
+  font-size: 1rem;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* Main card */
+.submission-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 2.5rem;
+  max-width: 700px;
+  width: 100%;
+}
+
+.card-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.card-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Upload mode tabs */
+.upload-mode-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  padding: 0.5rem;
+  background: #f3f4f6;
+  border-radius: 10px;
+}
+
+.upload-mode-selector button {
+  padding: 0.75rem 1.25rem;
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-mode-selector button:hover {
+  background: white;
+  color: #3a7ca5;
+}
+
+.upload-mode-selector button.active {
+  background: white;
+  color: #3a7ca5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Form groups */
 .form-group {
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;
-  font-weight: bold;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #374151;
 }
 
-.form-group input {
+.form-group input[type="text"],
+.form-group input[type="file"] {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-button {
-  padding: 0.75rem 1.5rem;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #0056b3;
-}
-
-.progress-container {
-  text-align: center;
-  padding: 2rem;
-}
-
-.progress-container h2 {
-  margin-bottom: 1rem;
-  color: #333;
-}
-
-.progress-bar-container {
-  width: 100%;
-  height: 30px;
-  background-color: #f0f0f0;
-  border-radius: 15px;
-  overflow: hidden;
-  margin: 1.5rem 0;
-  border: 1px solid #ddd;
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #007bff, #0056b3);
-  transition: width 0.3s ease;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.progress-message {
-  color: #555;
-  font-size: 1rem;
-  margin: 0.5rem 0;
-  font-weight: 500;
-}
-
-.progress-info {
-  color: #888;
-  font-size: 0.9rem;
-  margin-top: 1rem;
-}
-
-.progress-text {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.success-message,
-.error-message {
-  text-align: center;
-  padding: 2rem;
-  border-radius: 8px;
-}
-
-.success-message {
-  background-color: #d4edda;
-  color: #155724;
-}
-
-.error-message {
-  background-color: #f8d7da;
-  color: #721c24;
-}
-
-.error-alert {
-  background-color: #f8d7da;
-  color: #721c24;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
-  margin-top: 1rem;
-  border: 1px solid #f5c6cb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.2s;
+  background: #f9fafb;
 }
 
-.upload-mode-selector {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.upload-mode-selector button {
-  flex: 1;
-  padding: 0.5rem 1rem;
-  background-color: #f0f0f0;
-  color: #333;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.upload-mode-selector button:hover {
-  background-color: #e0e0e0;
-  border-color: #bbb;
-}
-
-.upload-mode-selector button.active {
-  background-color: #007bff;
-  color: white;
-  border-color: #007bff;
+.form-group input[type="text"]:focus,
+.form-group input[type="file"]:focus {
+  outline: none;
+  border-color: #3a7ca5;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(58, 124, 165, 0.1);
 }
 
 .file-info {
   margin-top: 0.5rem;
-  font-size: 0.9rem;
-  color: #666;
+  font-size: 0.875rem;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Submit button */
+button[type="submit"] {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  background: #3a7ca5;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(58, 124, 165, 0.2);
+}
+
+button[type="submit"]:hover:not(:disabled) {
+  background: #2c5f7f;
+  box-shadow: 0 10px 15px -3px rgba(58, 124, 165, 0.3);
+  transform: translateY(-2px);
+}
+
+button[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Progress view */
+.progress-container {
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.progress-container h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.progress-message {
+  color: #6b7280;
+  font-size: 1rem;
+  margin: 0 0 2rem 0;
+  font-weight: 500;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 12px;
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin: 2rem 0;
+  position: relative;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3a7ca5, #2c5f7f);
+  transition: width 0.3s ease;
+  border-radius: 9999px;
+}
+
+.progress-text {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #3a7ca5;
+  margin: 1rem 0;
+}
+
+.progress-info {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  margin-top: 1.5rem;
+  line-height: 1.6;
+}
+
+/* Success and error messages */
+.success-message,
+.error-message {
+  text-align: center;
+  padding: 2.5rem;
+  border-radius: 12px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.success-message {
+  background: #d1fae5;
+  color: #065f46;
+  border: 2px solid #10b981;
+}
+
+.success-message h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #ef4444;
+}
+
+.error-message h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.error-alert {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.875rem 1.125rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  border: 1px solid #fecaca;
+  font-size: 0.875rem;
+}
+
+/* Instrument selector integration */
+.job-submission .instrument-selector {
+  margin-bottom: 1.5rem;
+}
+
+/* Loading spinner */
+.spinner {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #3a7ca5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 1rem auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .hero-title {
+    font-size: 2rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1.125rem;
+  }
+
+  .submission-card {
+    padding: 1.5rem;
+  }
+
+  .upload-mode-selector {
+    grid-template-columns: 1fr;
+  }
 }

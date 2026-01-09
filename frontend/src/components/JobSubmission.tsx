@@ -175,114 +175,142 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
 
   return (
     <div className="job-submission">
-      <h1>Rescored - AI Music Transcription</h1>
-      <p>Convert YouTube videos to editable sheet music</p>
-
+      {/* Hero Section - only show when idle */}
       {(status === 'idle' || status === 'submitting') && (
-        <form onSubmit={handleSubmit}>
-          <InstrumentSelector
-            selectedInstruments={selectedInstruments}
-            onChange={setSelectedInstruments}
-            vocalInstrument={vocalInstrument}
-            onVocalInstrumentChange={setVocalInstrument}
-          />
-
-          <div className="form-group">
-            <label>Input Method:</label>
-            <div className="upload-mode-selector">
-              <button
-                type="button"
-                className={uploadMode === 'url' ? 'active' : ''}
-                onClick={() => {
-                  setUploadMode('url');
-                  setError(null);
-                }}
-              >
-                YouTube URL
-              </button>
-              <button
-                type="button"
-                className={uploadMode === 'file' ? 'active' : ''}
-                onClick={() => {
-                  setUploadMode('file');
-                  setError(null);
-                }}
-              >
-                Upload Audio File
-              </button>
-            </div>
-          </div>
-
-          {uploadMode === 'url' ? (
-            <div className="form-group">
-              <label htmlFor="youtube-url">YouTube URL:</label>
-              <input
-                id="youtube-url"
-                type="text"
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-                required
-                onBlur={() => {
-                  const validation = validateUrl(youtubeUrl);
-                  if (validation) setError(validation);
-                }}
-              />
-            </div>
-          ) : (
-            <div className="form-group">
-              <label htmlFor="audio-file">Audio File (WAV, MP3, FLAC, etc.):</label>
-              <input
-                id="audio-file"
-                type="file"
-                accept=".wav,.mp3,.flac,.ogg,.m4a,.aac"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const maxSize = 100 * 1024 * 1024; // 100MB
-                    if (file.size > maxSize) {
-                      setError('File too large. Maximum size: 100MB');
-                      setSelectedFile(null);
-                    } else {
-                      setSelectedFile(file);
-                      setError(null);
-                    }
-                  }
-                }}
-                required
-              />
-              {selectedFile && (
-                <p className="file-info">
-                  Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                </p>
-              )}
-            </div>
-          )}
-
-          <button type="submit" disabled={status === 'submitting'}>Transcribe</button>
-          {status === 'submitting' && <div>Submitting...</div>}
-          {error && <div role="alert" className="error-alert">{error}</div>}
-        </form>
-      )}
-
-      {status === 'processing' && (
-        <div className="progress-container">
-          <h2>Transcribing...</h2>
-          <div className="progress-bar-container">
-            <div className="progress-bar" style={{ width: `${progress}%` }} />
-          </div>
-          <p className="progress-message">{progress}% - {progressMessage}</p>
-          <p className="progress-info">
-            This may take 1-2 minutes. Please don't close this window.
-          </p>
+        <div className="hero-section">
+          <h1 className="hero-title">Turn Music into Sheet Music</h1>
+          <p className="hero-subtitle">AI-powered transcription from YouTube or audio files</p>
+          <p className="hero-description">Professional-quality notation • Editable scores • Export to MIDI</p>
         </div>
       )}
 
+      {/* Main Card */}
+      {(status === 'idle' || status === 'submitting') && (
+        <div className="submission-card">
+          <div className="card-header">
+            <h2 className="card-title">Start Transcription</h2>
+            <p className="card-subtitle">Choose your input method and select instruments to transcribe</p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <InstrumentSelector
+              selectedInstruments={selectedInstruments}
+              onChange={setSelectedInstruments}
+              vocalInstrument={vocalInstrument}
+              onVocalInstrumentChange={setVocalInstrument}
+            />
+
+            <div className="form-group">
+              <label>Input Method</label>
+              <div className="upload-mode-selector">
+                <button
+                  type="button"
+                  className={uploadMode === 'url' ? 'active' : ''}
+                  onClick={() => {
+                    setUploadMode('url');
+                    setError(null);
+                  }}
+                >
+                  YouTube URL
+                </button>
+                <button
+                  type="button"
+                  className={uploadMode === 'file' ? 'active' : ''}
+                  onClick={() => {
+                    setUploadMode('file');
+                    setError(null);
+                  }}
+                >
+                  Upload File
+                </button>
+              </div>
+            </div>
+
+            {uploadMode === 'url' ? (
+              <div className="form-group">
+                <label htmlFor="youtube-url">YouTube URL</label>
+                <input
+                  id="youtube-url"
+                  type="text"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  required
+                  onBlur={() => {
+                    const validation = validateUrl(youtubeUrl);
+                    if (validation) setError(validation);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="form-group">
+                <label htmlFor="audio-file">Audio File</label>
+                <input
+                  id="audio-file"
+                  type="file"
+                  accept=".wav,.mp3,.flac,.ogg,.m4a,.aac"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const maxSize = 100 * 1024 * 1024; // 100MB
+                      if (file.size > maxSize) {
+                        setError('File too large. Maximum size: 100MB');
+                        setSelectedFile(null);
+                      } else {
+                        setSelectedFile(file);
+                        setError(null);
+                      }
+                    }
+                  }}
+                  required
+                />
+                {selectedFile && (
+                  <p className="file-info">
+                    📄 {selectedFile.name} • {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                )}
+              </div>
+            )}
+
+            {error && <div role="alert" className="error-alert">{error}</div>}
+
+            <button type="submit" disabled={status === 'submitting'}>
+              {status === 'submitting' ? '⏳ Submitting...' : '🎵 Start Transcription'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Progress View */}
+      {status === 'processing' && (
+        <div className="submission-card">
+          <div className="progress-container">
+            <h2>Transcribing Your Music</h2>
+            <p className="progress-message">{progressMessage || 'Processing audio...'}</p>
+
+            <div className="progress-bar-container">
+              <div className="progress-bar" style={{ width: `${progress}%` }} />
+            </div>
+
+            <p className="progress-text">{progress}%</p>
+
+            <p className="progress-info">
+              This usually takes 5-15 minutes depending on the length of your audio.
+              <br />
+              Please keep this window open.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error View */}
       {status === 'failed' && (
-        <div className="error-message">
-          <h2>✗ Transcription Failed</h2>
-          <p>{error}</p>
-          <button onClick={() => setStatus('idle')}>Try Again</button>
+        <div className="submission-card">
+          <div className="error-message">
+            <h2>Transcription Failed</h2>
+            <p>{error || 'An unexpected error occurred. Please try again.'}</p>
+            <button onClick={() => setStatus('idle')}>← Try Again</button>
+          </div>
         </div>
       )}
     </div>

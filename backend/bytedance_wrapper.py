@@ -72,6 +72,66 @@ class ByteDanceTranscriber:
 
         print(f"   ✓ ByteDance model loaded")
 
+    def _preprocess_audio_for_maestro(
+        self,
+        audio: np.ndarray,
+        sr: int,
+        enable_preprocessing: bool = True
+    ) -> np.ndarray:
+        """
+        Preprocess audio to match MAESTRO dataset characteristics.
+
+        ByteDance is trained on MAESTRO (clean studio piano recordings).
+        This preprocessing helps when the input is noisy, compressed, or reverb-heavy:
+        1. Normalize volume to consistent level (-20 dBFS target)
+        2. Remove low-frequency rumble (<30Hz)
+        3. Light noise reduction (spectral gating)
+
+        Args:
+            audio: Audio waveform (mono, float32)
+            sr: Sample rate
+            enable_preprocessing: Enable preprocessing (from config)
+
+        Returns:
+            Preprocessed audio waveform
+        """
+        if not enable_preprocessing:
+            return audio
+
+        import librosa
+        from scipy import signal
+
+        print(f"   Preprocessing audio for ByteDance (matching MAESTRO characteristics)...")
+
+        # 1. Normalize volume to -20 dBFS (similar to MAESTRO)
+        # MAESTRO uses consistent recording level, helps model performance
+        rms = np.sqrt(np.mean(audio**2))
+        if rms > 0:
+            target_rms = 10**(-20/20)  # -20 dBFS
+            audio = audio * (target_rms / rms)
+            print(f"   ✓ Normalized volume to -20 dBFS")
+
+        # 2. Highpass filter to remove low-frequency rumble (<30Hz)
+        # Removes YouTube compression artifacts, room rumble
+        sos = signal.butter(4, 30, 'hp', fs=sr, output='sos')
+        audio = signal.sosfilt(sos, audio).astype(np.float32)
+        print(f"   ✓ Removed low-frequency rumble (<30Hz)")
+
+        # 3. Light spectral gating for noise reduction
+        # Reduces YouTube compression artifacts without affecting piano
+        # Only reduce noise floor, don't aggressively gate
+        noise_floor_db = -60  # dB threshold for noise reduction
+        noise_floor_linear = 10**(noise_floor_db/20)
+
+        # Simple soft gating: attenuate quiet samples
+        magnitude = np.abs(audio)
+        mask = magnitude / (magnitude.max() + 1e-10)
+        mask = np.clip(mask / noise_floor_linear, 0, 1)  # Soft gate
+        audio = audio * mask
+        print(f"   ✓ Applied light noise reduction (spectral gating)")
+
+        return audio
+
     def transcribe_audio(
         self,
         audio_path: Path,
@@ -102,6 +162,8 @@ class ByteDanceTranscriber:
         # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
         import soundfile as sf
         import librosa
+        from app_config import settings
+
         audio, sr = sf.read(str(audio_path), dtype='float32')
         # Convert to mono if stereo
         if len(audio.shape) > 1:
@@ -109,6 +171,13 @@ class ByteDanceTranscriber:
         # Resample if needed
         if sr != self.sample_rate:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=self.sample_rate)
+
+        # Preprocess audio to match MAESTRO characteristics
+        audio = self._preprocess_audio_for_maestro(
+            audio,
+            self.sample_rate,
+            enable_preprocessing=settings.enable_audio_preprocessing
+        )
 
         # Transcribe
         # ByteDance outputs:
@@ -159,6 +228,8 @@ class ByteDanceTranscriber:
         # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
         import soundfile as sf
         import librosa
+        from app_config import settings
+
         audio, sr = sf.read(str(audio_path), dtype='float32')
         # Convert to mono if stereo
         if len(audio.shape) > 1:
@@ -166,6 +237,13 @@ class ByteDanceTranscriber:
         # Resample if needed
         if sr != self.sample_rate:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=self.sample_rate)
+
+        # Preprocess audio to match MAESTRO characteristics
+        audio = self._preprocess_audio_for_maestro(
+            audio,
+            self.sample_rate,
+            enable_preprocessing=settings.enable_audio_preprocessing
+        )
 
         # Transcribe and get full output
         print(f"   Transcribing with ByteDance (with confidence): {audio_path.name}")

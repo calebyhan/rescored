@@ -30,12 +30,12 @@ graph TB
         SaveStems --> Stems
     end
 
-    subgraph Stage3["Stage 3: Transcription (50-90%)"]
+    subgraph Stage3["Stage 3: Transcription & MIDI Generation (50-100%)"]
         Health["Check<br/>YourMT3+<br/>Health"]
         YMT3["YourMT3+<br/>Inference<br/>(Primary)"]
         BasicPitch["basic-pitch<br/>Inference<br/>(Fallback)"]
         Quantize["Quantize<br/>& Clean<br/>MIDI"]
-        MIDI["piano.mid"]
+        MIDI["piano.mid<br/>(Output)"]
 
         Health -->|Healthy| YMT3
         Health -->|Unavailable| BasicPitch
@@ -44,20 +44,8 @@ graph TB
         Quantize --> MIDI
     end
 
-    subgraph Stage4["Stage 4: MusicXML Generation (90-100%)"]
-        Merge["Merge<br/>MIDI<br/>Tracks"]
-        Detect["Detect<br/>Metadata<br/>(tempo, key)"]
-        WriteMXML["Write<br/>MusicXML<br/>File"]
-        Output["output.musicxml"]
-
-        Merge --> Detect
-        Detect --> WriteMXML
-        WriteMXML --> Output
-    end
-
     Stage1 --> Stage2
     Stage2 --> Stage3
-    Stage3 --> Stage4
 ```
 
 ---
@@ -519,83 +507,6 @@ for stem_name, instrument_id in stem_to_instrument.items():
 **Output**: `piano.mid` (~10-50KB depending on complexity)
 
 **Progress Update**: 90%
-
----
-
-## Stage 4: MusicXML Generation
-
-### 4.1 MIDI to MusicXML Conversion
-
-**Purpose**: Convert MIDI to MusicXML with proper notation semantics (clefs, key signatures, measures).
-
-**Why MusicXML?**
-- MIDI lacks notation info (no clefs, no measure boundaries, no articulations)
-- MusicXML is the standard interchange format for notation software
-- Required for VexFlow rendering
-
-**Implementation**:
-
-```python
-from music21 import converter, stream, tempo, key, meter, clef
-from pathlib import Path
-
-class MusicXMLGenerator:
-    def __init__(self):
-        pass
-
-    def midi_to_musicxml(self, midi_path: Path, output_path: Path) -> Path:
-        """
-        Convert MIDI to MusicXML with music21.
-        """
-        # Parse MIDI
-        score = converter.parse(midi_path)
-
-        # Detect key signature
-        analyzed_key = score.analyze('key')
-        score.insert(0, analyzed_key)
-
-        # Set time signature (default 4/4, could detect from MIDI)
-        score.insert(0, meter.TimeSignature('4/4'))
-
-        # Detect tempo (from MIDI tempo events, or default to 120 BPM)
-        midi_tempo = self._extract_tempo(score)
-        score.insert(0, tempo.MetronomeMark(number=midi_tempo))
-
-        # Add clef (treble for piano right hand)
-        for part in score.parts:
-            part.insert(0, clef.TrebleClef())
-
-        # Split into measures (music21 does this automatically)
-        score = score.makeMeasures()
-
-        # Write MusicXML
-        score.write('musicxml', fp=str(output_path))
-
-        return output_path
-
-    def _extract_tempo(self, score) -> int:
-        """
-        Extract tempo from MIDI or default to 120 BPM.
-        """
-        # Look for MIDI tempo events
-        for element in score.flatten():
-            if isinstance(element, tempo.MetronomeMark):
-                return int(element.number)
-
-        # Default
-        return 120
-```
-
-**Metadata Added**:
-- **Key signature**: Detected by music21's key analysis algorithm
-- **Time signature**: Default to 4/4 (could improve with beat detection)
-- **Tempo**: Extracted from MIDI tempo events or default to 120 BPM
-- **Clef**: Treble clef for piano (could detect range and use bass clef)
-- **Measures**: Automatically calculated based on time signature
-
-**Output**: `score.musicxml` (~100-500KB depending on length)
-
-**Progress Update**: 100%
 
 ---
 

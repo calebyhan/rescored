@@ -3,12 +3,12 @@
   align-items: center;
   gap: 1rem;
   padding: 1.25rem;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #ffffff;
   border-radius: 12px;
   margin: 1.5rem 0;
   flex-wrap: wrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border: 1px solid #dee2e6;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #d1d5db;
 }
 
 .playback-controls button {
@@ -24,11 +24,11 @@
 }
 
 .playback-controls button:hover:not(:disabled) {
-  background: #007bff;
-  border-color: #007bff;
+  background: #3a7ca5;
+  border-color: #3a7ca5;
   color: white;
   transform: translateY(-1px);
-  box-shadow: 0 3px 6px rgba(0, 123, 255, 0.2);
+  box-shadow: 0 3px 6px rgba(58, 124, 165, 0.2);
 }
 
 .playback-controls button:active:not(:disabled) {
@@ -37,14 +37,15 @@
 }
 
 .playback-controls button:disabled {
-  opacity: 0.4;
+  opacity: 0.6;
+  color: #6b7280;
   cursor: not-allowed;
-  background: #f8f9fa;
+  background: #f3f4f6;
 }
 
 .playback-controls button.active {
-  background: #007bff;
-  border-color: #007bff;
+  background: #3a7ca5;
+  border-color: #3a7ca5;
   color: white;
 }
 
@@ -82,38 +83,38 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #007bff;
+  background: #3a7ca5;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(58, 124, 165, 0.3);
   transition: all 0.2s ease;
 }
 
 .tempo-control input[type="range"]::-webkit-slider-thumb:hover {
-  background: #0056b3;
+  background: #2c5f7f;
   transform: scale(1.1);
-  box-shadow: 0 3px 6px rgba(0, 123, 255, 0.4);
+  box-shadow: 0 3px 6px rgba(58, 124, 165, 0.4);
 }
 
 .tempo-control input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #007bff;
+  background: #3a7ca5;
   cursor: pointer;
   border: none;
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(58, 124, 165, 0.3);
   transition: all 0.2s ease;
 }
 
 .tempo-control input[type="range"]::-moz-range-thumb:hover {
-  background: #0056b3;
+  background: #2c5f7f;
   transform: scale(1.1);
-  box-shadow: 0 3px 6px rgba(0, 123, 255, 0.4);
+  box-shadow: 0 3px 6px rgba(58, 124, 165, 0.4);
 }
 
 .tempo-control span {
   font-weight: 600;
-  color: #007bff;
+  color: #3a7ca5;
   min-width: 40px;
   text-align: center;
 }

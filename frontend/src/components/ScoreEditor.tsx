@@ -8,6 +8,7 @@ import { useNotationStore } from '../store/notation';
 import { NotationCanvas } from './NotationCanvas';
 import { PlaybackControls } from './PlaybackControls';
 import { InstrumentTabs } from './InstrumentTabs';
+import { ScoreHeader } from './ScoreHeader';
 import './ScoreEditor.css';
 
 interface ScoreEditorProps {
@@ -22,6 +23,8 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const loadFromMidi = useNotationStore((state) => state.loadFromMidi);
   const activeInstrument = useNotationStore((state) => state.activeInstrument);
   const setActiveInstrument = useNotationStore((state) => state.setActiveInstrument);
+  const score = useNotationStore((state) => state.score);
+  const setTempo = useNotationStore((state) => state.setTempo);
 
   useEffect(() => {
     loadScore();
@@ -35,9 +38,9 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       // Get job status to find which instruments were transcribed
       const jobStatus = await getJobStatus(jobId);
 
-      // For now, assume piano is the default instrument (backend doesn't yet return instruments list)
-      // TODO: Update when backend API returns instruments list in job status
-      const transcribedInstruments = ['piano'];
+      // Parse instruments from backend (graceful degradation if not available)
+      // Backend will eventually return: jobStatus.instruments = ['piano', 'vocals', 'drums']
+      const transcribedInstruments = (jobStatus as any).instruments || ['piano'];
       setInstruments(transcribedInstruments);
 
       // Fetch metadata once (shared across all instruments)
@@ -45,9 +48,8 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
       // Load MIDI files for each instrument
       for (const instrument of transcribedInstruments) {
-        // For MVP, backend only supports piano (single stem)
-        // In the future, this will fetch per-instrument MIDI: `/api/v1/scores/${jobId}/midi/${instrument}`
-        const midiData = await getMidiFile(jobId);
+        // Per-instrument MIDI endpoint (backward compatible)
+        const midiData = await getMidiFile(jobId, instrument);
 
         await loadFromMidi(instrument, midiData, {
           tempo: metadata.tempo,
@@ -67,11 +69,6 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       setError(err instanceof Error ? err.message : 'Failed to load score');
       setLoading(false);
     }
-  };
-
-  const handleExportMusicXML = () => {
-    // TODO: Generate MusicXML from edited score state
-    alert('MusicXML export coming soon - will generate from your edited notation');
   };
 
   const handleExportMIDI = async () => {
@@ -107,32 +104,105 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
   return (
     <div className="score-editor">
-      <div className="editor-toolbar">
-        <h2>Score Editor</h2>
-        <div className="toolbar-actions">
-          <button onClick={handleExportMIDI}>Export MIDI</button>
+      {/* Left Sidebar - Controls & Metadata */}
+      <aside className="editor-sidebar">
+        <div className="editor-sidebar-header">
+          <h2>Score Editor</h2>
+          <div className="subtitle">Edit and export your transcription</div>
         </div>
-      </div>
 
-      <InstrumentTabs
-        instruments={instruments}
-        activeInstrument={activeInstrument}
-        onInstrumentChange={setActiveInstrument}
-      />
+        <div className="editor-sidebar-content">
+          {/* Score Info */}
+          {score && (
+            <div className="sidebar-section">
+              <h3 className="sidebar-section-title">Score Info</h3>
+              <div className="sidebar-score-header">
+                <h4 className="sidebar-score-title">{score.title}</h4>
+                {score.composer && <p className="sidebar-score-composer">{score.composer}</p>}
+              </div>
+              <div className="sidebar-metadata">
+                <div className="metadata-item">
+                  <span className="metadata-label">Tempo</span>
+                  <span className="metadata-value">♩ = {score.tempo}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Key</span>
+                  <span className="metadata-value">{score.key}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Time</span>
+                  <span className="metadata-value">{score.timeSignature}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
-      <PlaybackControls />
+          {/* Instruments */}
+          {instruments.length > 1 && (
+            <div className="sidebar-section">
+              <h3 className="sidebar-section-title">Instruments</h3>
+              <div className="sidebar-instrument-tabs">
+                {instruments.map((instrument) => (
+                  <button
+                    key={instrument}
+                    className={`sidebar-instrument-tab ${activeInstrument === instrument ? 'active' : ''}`}
+                    onClick={() => setActiveInstrument(instrument)}
+                  >
+                    {getInstrumentIcon(instrument)} {capitalizeFirst(instrument)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-      <NotationCanvas />
+          {/* Playback */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Playback</h3>
+            <PlaybackControls />
+          </div>
 
-      <div className="editor-instructions">
-        <h3>Editing Instructions (MVP)</h3>
-        <ul>
-          <li>Click notes to select them</li>
-          <li>Press Delete to remove selected notes</li>
-          <li>Press 1-8 to change note duration</li>
-          <li>Full editing features coming soon...</li>
-        </ul>
-      </div>
+          {/* Quick Tips */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Quick Tips</h3>
+            <div style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: '1.5' }}>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Click notes to select</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Press Delete to remove</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Press 1-8 for duration</p>
+              <p style={{ margin: '0' }}>• Space to play/pause</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions Footer */}
+        <div className="sidebar-actions">
+          <button onClick={handleExportMIDI}>Export MIDI</button>
+          <button className="primary">Export MusicXML (Soon)</button>
+        </div>
+      </aside>
+
+      {/* Right Main Area - Notation Canvas */}
+      <main className="editor-main">
+        <div className="editor-main-content">
+          <NotationCanvas />
+        </div>
+      </main>
     </div>
   );
+}
+
+// Helper functions
+function getInstrumentIcon(instrument: string): string {
+  const icons: Record<string, string> = {
+    piano: '🎹',
+    vocals: '🎤',
+    drums: '🥁',
+    bass: '🎸',
+    guitar: '🎸',
+    other: '🎵',
+  };
+  return icons[instrument] || '🎵';
+}
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }

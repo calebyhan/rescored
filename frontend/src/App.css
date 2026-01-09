@@ -13,18 +13,31 @@ body {
 
 .app {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 2rem;
+  background: white;
+  color: #1f2937;
+  position: relative;
 }
 
+/* Back button - fixed position top-left */
 .back-button {
-  margin-bottom: 1rem;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  padding: 0.5rem 1rem;
   background: white;
-  color: #667eea;
-  border: 2px solid #667eea;
+  color: #3a7ca5;
+  border: 2px solid #3a7ca5;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .back-button:hover {
-  background: #667eea;
+  background: #3a7ca5;
   color: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }

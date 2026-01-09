@@ -66,6 +66,7 @@ interface NotationState {
     }
   ) => Promise<void>;
   setActiveInstrument: (instrument: string) => void;
+  setTempo: (tempo: number) => void;
   addNote: (measureId: string, note: Note) => void;
   deleteNote: (noteId: string) => void;
   updateNote: (noteId: string, changes: Partial<Note>) => void;
@@ -161,6 +162,23 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       selectedNoteIds: [], // Clear selection when switching instruments
     });
   },
+
+  setTempo: (tempo) =>
+    set((state) => {
+      if (!state.score) return state;
+
+      // Update tempo in active score
+      const updatedScore = { ...state.score, tempo };
+
+      // Update in scores map
+      const newScores = new Map(state.scores);
+      newScores.set(state.activeInstrument, updatedScore);
+
+      return {
+        score: updatedScore,
+        scores: newScores,
+      };
+    }),
 
   addNote: (measureId, note) =>
     set((state) => {

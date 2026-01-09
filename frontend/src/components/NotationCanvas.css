@@ -1,9 +1,10 @@
 .notation-canvas-wrapper {
   background: white;
-  border: 1px solid #ccc;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 1rem;
   margin: 1rem 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .notation-canvas {
@@ -22,18 +23,25 @@
 }
 
 .vf-stavenote.selected {
-  fill: #007bff;
+  fill: #2563eb;
 }
 
 .vf-stavenote.playing {
-  fill: #28a745 !important;
+  fill: #059669 !important;
   opacity: 1 !important;
 }
 
 .vf-stavenote.playing .vf-notehead {
-  fill: #28a745 !important;
+  fill: #059669 !important;
 }
 
 .vf-stavenote.playing .vf-stem {
-  stroke: #28a745 !important;
+  stroke: #059669 !important;
+}
+
+.vf-stavetext {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-style: italic;
+  color: #4a5568;
 }

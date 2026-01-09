@@ -126,6 +126,26 @@ class EnsembleTranscriber:
         yourmt3_notes = self._extract_notes_from_midi(yourmt3_midi)
         print(f"   ✓ YourMT3+ found {len(yourmt3_notes)} notes")
 
+        # Validate piano stem quality before ByteDance
+        from app_config import settings
+        stem_quality_ok = self._validate_stem_quality(
+            audio_path,
+            enable_validation=settings.enable_stem_quality_validation
+        )
+
+        # Skip ByteDance if stem quality is poor
+        if not stem_quality_ok:
+            print(f"\n   Skipping ByteDance (poor stem quality) - using YourMT3+-only mode")
+            ensemble_notes = yourmt3_notes
+            print(f"   ✓ Result: {len(ensemble_notes)} notes (YourMT3+ only)")
+
+            # Convert to MIDI
+            ensemble_midi_path = output_dir / f"{audio_path.stem}_ensemble.mid"
+            self._notes_to_midi(ensemble_notes, ensemble_midi_path)
+            print(f"   ✓ Ensemble MIDI saved: {ensemble_midi_path.name}")
+            print(f"   ═══════════════════════════════\n")
+            return ensemble_midi_path
+
         # Transcribe with ByteDance (with confidence if enabled)
         print(f"\n   [2/2] Transcribing with ByteDance...")
         if self.use_bytedance_confidence:
@@ -141,13 +161,24 @@ class EnsembleTranscriber:
             bytedance_notes = self._extract_notes_from_midi(bytedance_midi)
             print(f"   ✓ ByteDance found {len(bytedance_notes)} notes")
 
-        # Vote and merge
-        print(f"\n   Voting with '{self.voting_strategy}' strategy...")
-        ensemble_notes = self._vote_notes(
-            [yourmt3_notes, bytedance_notes],
-            model_names=['YourMT3+', 'ByteDance']
+        # Validate ByteDance results (detect catastrophic failures)
+        bytedance_failed = self._validate_bytedance_results(
+            yourmt3_notes,
+            bytedance_notes
         )
-        print(f"   ✓ Ensemble result: {len(ensemble_notes)} notes")
+
+        # Vote and merge (or fallback to YourMT3+ only if ByteDance failed)
+        if bytedance_failed:
+            print(f"\n   Using YourMT3+-only mode (ByteDance failed validation)")
+            ensemble_notes = yourmt3_notes
+            print(f"   ✓ Result: {len(ensemble_notes)} notes (YourMT3+ only)")
+        else:
+            print(f"\n   Voting with '{self.voting_strategy}' strategy...")
+            ensemble_notes = self._vote_notes(
+                [yourmt3_notes, bytedance_notes],
+                model_names=['YourMT3+', 'ByteDance']
+            )
+            print(f"   ✓ Ensemble result: {len(ensemble_notes)} notes")
 
         # Convert to MIDI
         ensemble_midi_path = output_dir / f"{audio_path.stem}_ensemble.mid"
@@ -271,15 +302,25 @@ class EnsembleTranscriber:
         """
         Weighted voting: Multiply model weight by note confidence, keep notes above threshold.
 
-        Model weights:
-        - YourMT3+: 0.4 (generalist, no confidence scores available)
-        - ByteDance: 0.6 (piano specialist, uses actual frame-level confidence)
+        Model weights (configurable via app_config):
+        - YourMT3+: default 0.45 (generalist, no confidence scores available)
+        - ByteDance: default 0.55 (piano specialist, uses actual frame-level confidence)
 
         Combined weight = model_weight × note_confidence
         This allows ByteDance's low-confidence notes to be downweighted appropriately.
         """
-        # Model weights (ByteDance is more accurate for piano)
-        weights = {'YourMT3+': 0.4, 'ByteDance': 0.6}
+        # Import config for asymmetric thresholds
+        from app_config import settings
+
+        # Model weights (configurable)
+        if settings.use_asymmetric_thresholds:
+            weights = {
+                'YourMT3+': settings.yourmt3_model_weight,
+                'ByteDance': settings.bytedance_model_weight
+            }
+        else:
+            # Legacy fixed weights
+            weights = {'YourMT3+': 0.4, 'ByteDance': 0.6}
 
         # Group notes by (onset_bucket, pitch)
         note_groups = {}
@@ -519,3 +560,103 @@ class EnsembleTranscriber:
 
         # Save
         mid.save(output_path)
+
+    def _validate_stem_quality(
+        self,
+        audio_path: Path,
+        enable_validation: bool = True
+    ) -> bool:
+        """
+        Validate piano stem quality before ByteDance transcription.
+
+        Poor stem separation (e.g., reverb-heavy, compressed audio) can cause
+        ByteDance to fail. This checks RMS energy and spectral characteristics.
+
+        Args:
+            audio_path: Path to piano stem audio file
+            enable_validation: Enable validation (from config)
+
+        Returns:
+            True if stem quality is good, False otherwise
+        """
+        if not enable_validation:
+            return True
+
+        import librosa
+        import soundfile as sf
+
+        # Load audio
+        audio, sr = sf.read(str(audio_path), dtype='float32')
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+
+        # Calculate RMS energy
+        rms = np.sqrt(np.mean(audio**2))
+
+        # Check if stem is too quiet (failed separation)
+        min_rms = 0.01  # Minimum RMS threshold
+        if rms < min_rms:
+            print(f"   ⚠ WARNING: Piano stem RMS energy too low ({rms:.4f} < {min_rms})")
+            print(f"   This indicates poor stem separation quality")
+            return False
+
+        # Check spectral centroid (piano should have mid-high frequency content)
+        spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)[0]
+        mean_centroid = np.mean(spectral_centroid)
+
+        # Piano typically has centroid between 1000-3000 Hz
+        # If too low, it's probably not clean piano
+        min_centroid = 500  # Hz
+        if mean_centroid < min_centroid:
+            print(f"   ⚠ WARNING: Piano stem spectral centroid too low ({mean_centroid:.0f}Hz < {min_centroid}Hz)")
+            print(f"   This indicates poor stem separation quality (not clean piano)")
+            return False
+
+        print(f"   ✓ Piano stem quality validated (RMS: {rms:.4f}, Centroid: {mean_centroid:.0f}Hz)")
+        return True
+
+    def _validate_bytedance_results(
+        self,
+        yourmt3_notes: List[Note],
+        bytedance_notes: List[Note]
+    ) -> bool:
+        """
+        Validate ByteDance transcription results to detect catastrophic failures.
+
+        ByteDance can fail dramatically when piano stem separation is poor (e.g., 9 notes vs 768).
+        This checks for:
+        1. Absolute failure: ByteDance finds < bytedance_min_notes_threshold notes
+        2. Relative failure: ByteDance finds < bytedance_note_ratio_threshold × YourMT3+ notes
+
+        Args:
+            yourmt3_notes: Notes from YourMT3+
+            bytedance_notes: Notes from ByteDance
+
+        Returns:
+            True if ByteDance failed, False otherwise
+        """
+        # Import config
+        from app_config import settings
+
+        yourmt3_count = len(yourmt3_notes)
+        bytedance_count = len(bytedance_notes)
+
+        # Check absolute threshold
+        if bytedance_count < settings.bytedance_min_notes_threshold:
+            print(f"   ⚠ WARNING: ByteDance catastrophic failure detected!")
+            print(f"   ByteDance found only {bytedance_count} notes (threshold: {settings.bytedance_min_notes_threshold})")
+            print(f"   This usually indicates poor piano stem separation quality")
+            print(f"   Falling back to YourMT3+-only mode for this audio")
+            return True
+
+        # Check relative threshold (ratio)
+        if yourmt3_count > 0:
+            note_ratio = bytedance_count / yourmt3_count
+            if note_ratio < settings.bytedance_note_ratio_threshold:
+                print(f"   ⚠ WARNING: ByteDance may have failed")
+                print(f"   ByteDance/YourMT3+ ratio: {note_ratio:.2f} (threshold: {settings.bytedance_note_ratio_threshold})")
+                print(f"   ByteDance: {bytedance_count} notes, YourMT3+: {yourmt3_count} notes")
+                print(f"   Falling back to YourMT3+-only mode for this audio")
+                return True
+
+        return False

@@ -163,8 +163,14 @@ export async function downloadScore(jobId: string) {
   return api.getScore(jobId);
 }
 
-export async function getMidiFile(jobId: string): Promise<ArrayBuffer> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/scores/${jobId}/midi`);
+export async function getMidiFile(jobId: string, instrument: string = 'piano'): Promise<ArrayBuffer> {
+  // Backward compatible: default to piano endpoint
+  // Future backend will support: /api/v1/midi/${jobId}/${instrument}
+  const endpoint = instrument === 'piano'
+    ? `${API_BASE_URL}/api/v1/midi/${jobId}`
+    : `${API_BASE_URL}/api/v1/midi/${jobId}/${instrument}`;
+
+  const response = await fetch(endpoint);
 
   if (!response.ok) {
     throw new Error('Failed to fetch MIDI file');

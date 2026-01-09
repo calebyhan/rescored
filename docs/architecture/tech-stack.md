@@ -211,42 +211,23 @@ This document details the technology choices for Rescored, including alternative
 
 ## File Formats
 
-### Primary Format: MusicXML
-
-**Chosen**: MusicXML 4.0
-
-**Why**:
-- Industry-standard interchange format
-- Supported by all major notation software (Finale, Sibelius, MuseScore, Dorico)
-- Preserves notation semantics (clefs, articulations, lyrics)
-- Human-readable XML (good for debugging)
-- VexFlow can parse it directly
-
-**Alternatives Considered**:
-
-| Option | Pros | Cons | Why Not Chosen |
-|--------|------|------|----------------|
-| MIDI | Universal, compact, great for playback | No notation info (clefs, staff layout) | Complementary, not replacement |
-| MEI (Music Encoding Initiative) | More expressive than MusicXML | Less tool support, steeper learning curve | MusicXML more widely adopted |
-| ABC Notation | Human-readable text | Limited notation features, less standard | Better for folk music than general use |
-| Proprietary (Finale .musx) | Native to notation software | Requires specific tools to read | MusicXML is open standard |
-
-**Decision**: MusicXML is the universal standard for notation exchange.
-
----
-
-### Intermediate Format: MIDI
+### Primary Format: MIDI
 
 **Chosen**: MIDI 1.0 (SMF Type 1)
 
 **Why**:
 - Universal output format from transcription models
-- Easy to convert to MusicXML
-- Useful for export option
+- Compact and efficient
 - Tone.js plays MIDI directly
+- VexFlow can render from MIDI
+- Useful for export to DAWs
 
-**Why Not Sufficient Alone**:
-- Lacks notation semantics (clefs, key signatures, measure boundaries)
+**Limitations**:
+- Lacks some notation semantics compared to MusicXML (articulations, lyrics)
+- No staff layout information
+- Sufficient for MVP piano transcription
+
+---
 - No staff layout information
 - Ambiguous rhythmic notation
 

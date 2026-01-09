@@ -95,7 +95,13 @@ class Settings(BaseSettings):
     use_bytedance_ensemble: bool = True  # Include ByteDance piano transcription in ensemble
     ensemble_voting_strategy: str = "weighted"  # Voting strategy: weighted, intersection, union, majority
     ensemble_onset_tolerance_ms: int = 50  # Time window for matching notes (milliseconds)
-    ensemble_confidence_threshold: float = 0.35  # Minimum confidence for weighted voting (0.4 for YourMT3+ solo notes, 0.6+ for ByteDance solo)
+    ensemble_confidence_threshold: float = 0.25  # Minimum confidence for weighted voting (lowered to keep more ByteDance low-confidence notes)
+    use_asymmetric_thresholds: bool = True  # Use different weights and thresholds per model
+    yourmt3_model_weight: float = 0.45  # YourMT3+ weight in ensemble (generalist, no confidence scores)
+    bytedance_model_weight: float = 0.55  # ByteDance weight in ensemble (piano specialist, has confidence scores)
+    bytedance_min_notes_threshold: int = 50  # Minimum notes for ByteDance to be considered valid (fallback to YourMT3+ only if below)
+    bytedance_note_ratio_threshold: float = 0.2  # Minimum ByteDance/YourMT3+ note ratio (warn if catastrophic failure)
+    enable_stem_quality_validation: bool = True  # Validate piano stem quality before ByteDance (RMS energy, spectral centroid)
 
     # Phase 1.1: Enhanced Confidence Filtering
     use_bytedance_confidence: bool = True  # Use ByteDance frame-level confidence scores (onset_roll/offset_roll)

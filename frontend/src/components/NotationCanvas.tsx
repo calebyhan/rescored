@@ -80,10 +80,10 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
 
     // Render grand staff (treble + bass)
     if (score.parts.length >= 2) {
-      renderGrandStaff(context, score.parts, measuresPerRow, staveWidth, staveHeight, grandStaffSpacing, score);
+      renderGrandStaff(context, score.parts, measuresPerRow, staveWidth, staveHeight, grandStaffSpacing, score, containerRef.current);
     } else {
       // Single staff fallback
-      renderSingleStaff(context, score.parts[0], measuresPerRow, staveWidth, staveHeight, score);
+      renderSingleStaff(context, score.parts[0], measuresPerRow, staveWidth, staveHeight, score, containerRef.current);
     }
   }, [score]);
 
@@ -100,13 +100,18 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
     // If no notes are playing, we're done
     if (playingNoteIds.length === 0) return;
 
-    // For MVP: Highlight first few notes as a simple visual indicator
-    // VexFlow doesn't provide easy note ID tracking, so we use index-based highlighting
-    // This provides visual feedback that playback is working
-    const notesToHighlight = Math.min(playingNoteIds.length * 2, allNotes.length);
-    for (let i = 0; i < notesToHighlight; i++) {
-      allNotes[i]?.classList.add('playing');
-    }
+    // IMPROVED: Highlight by exact note ID
+    playingNoteIds.forEach((noteId) => {
+      // Find SVG element with matching note ID
+      // Note: For chords, data-note-id contains comma-separated IDs
+      const noteElements = containerRef.current?.querySelectorAll('.vf-stavenote[data-note-id]');
+      noteElements?.forEach((noteElement) => {
+        const dataIds = noteElement.getAttribute('data-note-id');
+        if (dataIds && dataIds.split(',').includes(noteId)) {
+          noteElement.classList.add('playing');
+        }
+      });
+    });
   }, [playingNoteIds]);
 
   return (
@@ -144,7 +149,8 @@ function renderGrandStaff(
   staveWidth: number,
   staveHeight: number,
   grandStaffSpacing: number,
-  score: any
+  score: any,
+  containerRef?: HTMLDivElement | null
 ): void {
   const treblePart = parts[0]; // Treble clef (right hand)
   const bassPart = parts[1];   // Bass clef (left hand)
@@ -165,6 +171,10 @@ function renderGrandStaff(
       const vexflowKey = convertKeySignature(score.key);
       if (vexflowKey && vexflowKey !== 'C') {
         trebleStave.addKeySignature(vexflowKey);
+      }
+      // Add instrument label on first system
+      if (row === 0) {
+        trebleStave.setText('Piano', 3, { shift_x: -60, shift_y: 0 });
       }
     }
     trebleStave.setContext(context).draw();
@@ -195,11 +205,11 @@ function renderGrandStaff(
 
     // Render notes for both staves
     if (treblePart.measures[i]?.notes.length > 0) {
-      renderMeasureNotes(context, trebleStave, treblePart.measures[i].notes, score.timeSignature);
+      renderMeasureNotes(context, trebleStave, treblePart.measures[i].notes, score.timeSignature, containerRef);
     }
 
     if (bassPart.measures[i]?.notes.length > 0) {
-      renderMeasureNotes(context, bassStave, bassPart.measures[i].notes, score.timeSignature);
+      renderMeasureNotes(context, bassStave, bassPart.measures[i].notes, score.timeSignature, containerRef);
     }
   }
 }
@@ -213,7 +223,8 @@ function renderSingleStaff(
   measuresPerRow: number,
   staveWidth: number,
   staveHeight: number,
-  score: any
+  score: any,
+  containerRef?: HTMLDivElement | null
 ): void {
   part.measures.forEach((measure, idx) => {
     const row = Math.floor(idx / measuresPerRow);
@@ -230,12 +241,14 @@ function renderSingleStaff(
       if (vexflowKey && vexflowKey !== 'C') {
         stave.addKeySignature(vexflowKey);
       }
+      // Add instrument label on first staff
+      stave.setText(part.name || 'Instrument', 3, { shift_x: -60, shift_y: 0 });
     }
 
     stave.setContext(context).draw();
 
     if (measure.notes.length > 0) {
-      renderMeasureNotes(context, stave, measure.notes, score.timeSignature);
+      renderMeasureNotes(context, stave, measure.notes, score.timeSignature, containerRef);
     }
   });
 }
@@ -247,10 +260,11 @@ function renderMeasureNotes(
   context: any,
   stave: Stave,
   notes: Note[],
-  timeSignature: string
+  timeSignature: string,
+  containerRef?: HTMLDivElement | null
 ): void {
   try {
-    // Group notes by chordId (trust the parser's chord grouping from MusicXML <chord/> tags)
+    // Group notes by chordId (trust the parser's chord grouping from MIDI)
     // This is more accurate than re-detecting chords by duration
     const noteGroups: Record<string, Note[]> = notes.reduce((groups, note) => {
       const groupId = note.chordId || `single-${note.id}`;
@@ -313,6 +327,24 @@ function renderMeasureNotes(
     const formatter = new Formatter();
     formatter.joinVoices([voice]).format([voice], stave.getWidth() - 20);
     voice.draw(context, stave);
+
+    // Attach note IDs to SVG elements for accurate playback highlighting
+    if (containerRef) {
+      const svgNotes = containerRef.querySelectorAll('.vf-stavenote');
+      const tickables = voice.getTickables();
+
+      // Map note group indices to actual note IDs
+      let noteGroupIndex = 0;
+      for (const group of Object.values(noteGroups)) {
+        const svgElement = svgNotes[svgNotes.length - tickables.length + noteGroupIndex];
+        if (svgElement && group.length > 0) {
+          // For chords, store all note IDs (comma-separated)
+          const noteIds = group.map(n => n.id).join(',');
+          svgElement.setAttribute('data-note-id', noteIds);
+        }
+        noteGroupIndex++;
+      }
+    }
   } catch (error) {
     // Silently skip measures that fail to render
     console.warn('Failed to render measure:', error);

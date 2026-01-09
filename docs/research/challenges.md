@@ -163,24 +163,6 @@ When sustained piano notes fade in the original audio, the ML transcription mode
 
 ## File Format Edge Cases
 
-### Challenge: MusicXML Complexity
-
-**Problem**: MusicXML supports many features that VexFlow doesn't render well:
-- Multiple voices per staff
-- Cross-staff beaming (piano)
-- Complex time signatures (5/8, 7/4)
-- Ornaments, trills
-
-**Impact**: Some MusicXML files won't render correctly
-
-**Mitigation**:
-1. **MVP**: Only generate simple MusicXML (single voice, common time sigs)
-2. **Validation**: Warn if MusicXML contains unsupported features
-3. **Fallback**: Offer MIDI export if MusicXML fails
-
----
-
-## Browser Performance
 
 ### Challenge: Large Scores Slow Down Frontend
 

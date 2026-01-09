@@ -13,7 +13,7 @@ pinned: false
 
 Convert YouTube videos into editable sheet music using AI.
 
-## 🚀 Deployment
+## Deployment
 
 **Status**: Live and operational!
 
@@ -26,7 +26,7 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 1. **Submit** a YouTube URL
 2. **AI Processing** extracts audio, separates instruments, and transcribes to MIDI
 3. **Edit** the notation in an interactive editor
-4. **Export** as MusicXML or MIDI
+4. **Export** as MIDI
 
 **Tech Stack**:
 - **Backend**: Python/FastAPI + Celery + Redis
@@ -108,7 +108,6 @@ pip install -r requirements.txt
 # Verify installation
 python -c "import torch; print(f'PyTorch {torch.__version__} installed')"
 python -c "import librosa; print(f'librosa installed')"
-python -c "import music21; print(f'music21 installed')"
 
 # Copy environment file and configure
 cp .env.example .env
@@ -119,7 +118,7 @@ cp .env.example .env
 - Core ML frameworks: PyTorch 2.9+, torchaudio 2.9+
 - Audio processing: librosa, soundfile, demucs, audio-separator
 - Transcription: YourMT3+ dependencies (transformers, lightning, einops)
-- Music notation: music21, mido, pretty_midi
+- Music notation: mido, pretty_midi
 - Web framework: FastAPI, uvicorn, celery, redis
 - Testing: pytest, pytest-asyncio, pytest-cov, pytest-mock
 - **Total: ~200 packages, ~3-4GB download**
@@ -159,7 +158,7 @@ cd frontend
 npm install
 ```
 
-### ⚠️ REQUIRED: YouTube Cookies Setup
+### REQUIRED: YouTube Cookies Setup
 
 YouTube requires authentication for video downloads (as of December 2024). You **MUST** export your YouTube cookies before the application will work.
 
@@ -257,7 +256,7 @@ You should see the file listed.
 
 - **Cookies expire quickly**: Export from a NEW incognito window each time. You may need to re-export periodically.
 
-**Security Note:** ⚠️ Never commit `youtube_cookies.txt` to git (it's already in `.gitignore`). Your cookies contain authentication tokens for your Google account—keep them private!
+**Security Note:** Never commit `youtube_cookies.txt` to git (it's already in `.gitignore`). Your cookies contain authentication tokens for your Google account—keep them private!
 
 **Why Is This Required?** YouTube implemented bot detection in late 2024 that blocks unauthenticated downloads. Even though our tool is for legitimate transcription purposes, YouTube's systems can't distinguish it from scrapers. By providing your cookies, you're proving you're a real user who has agreed to YouTube's terms of service.
 
@@ -310,24 +309,29 @@ You should see:
    - **With MPS/GPU**: ~1-2 minutes
    - **With CPU**: ~10-15 minutes
 5. Edit the notation in the interactive editor
-6. Export as MusicXML or MIDI
+6. Export as MIDI
 
-## MVP Features
+## Features
 
-✅ YouTube URL input and validation
-✅ Piano-only transcription (MVP limitation)
-✅ Single staff notation (treble clef)
-✅ Basic editing: select, delete, add notes
-✅ Play/pause with tempo control
-✅ Export MusicXML
-
-### Coming in Phase 2
-
-- Multi-instrument transcription
-- Grand staff (treble + bass)
-- Advanced editing (copy/paste, undo/redo)
-- MIDI export
-- PDF export
+- [x] **YouTube URL input** with validation and health checks
+- [x] **Multi-instrument transcription** (piano, guitar, bass, drums, vocals, other)
+- [x] **Advanced source separation** (BS-RoFormer + Demucs 6-stem)
+- [x] **Ensemble transcription** (YourMT3+ + ByteDance voting system)
+- [x] **Audio preprocessing** (noise reduction, spectral denoising)
+- [x] **Confidence filtering** (removes low-confidence notes)
+- [x] **Key-aware filtering** (removes out-of-key notes)
+- [x] **Interactive notation editor** with VexFlow rendering
+- [x] **Multi-instrument tabs** (switch between transcribed instruments)
+- [x] **Playback controls** (play/pause, tempo adjust, loop)
+- [x] **Real-time progress** via WebSocket
+- [x] **MIDI export** (download transcribed notation)
+- [x] **Grand staff support** (treble + bass clefs)
+- [x] **Chord detection** and rendering
+- [x] **Note selection** and highlighting
+- [ ] Advanced editing (copy/paste, drag-to-reposition, undo/redo)
+- [ ] PDF export
+- [ ] Articulations and dynamics notation
+- [ ] User accounts and cloud storage
 
 ## Project Structure
 
@@ -488,7 +492,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **audio-separator** - BS-RoFormer wrapper and audio processing utilities
 
 ### Music Processing Libraries
-- **music21** (MIT) - MusicXML generation and music theory analysis
 - **librosa** - Audio preprocessing and feature extraction
 - **madmom** - Beat tracking and tempo detection
 - **pretty_midi** - MIDI file manipulation
@@ -499,7 +502,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Roadmap
 
-### ✅ Phase 1 (Completed)
+### [x] Phase 1 (Completed)
 - Piano transcription with 90% accuracy (ensemble voting)
 - Two-stage source separation (BS-RoFormer + Demucs)
 - Audio preprocessing pipeline

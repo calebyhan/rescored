@@ -12,7 +12,7 @@ graph TB
     Transcribe["Backend transcribes piano<br/>to sheet music (1-2 minutes)"]
     View["User sees notation,<br/>can edit notes"]
     Playback["User plays back<br/>edited notation"]
-    Export["User exports as<br/>MusicXML or MIDI"]
+    Export["User exports as<br/>MIDI"]
 
     Paste --> Transcribe
     Transcribe --> View
@@ -29,7 +29,7 @@ graph TB
 - ✅ Audio download with yt-dlp
 - ✅ Source separation with Demucs (4-stem)
 - ✅ **Piano-only transcription** (other stem only, assume piano/keyboard)
-- ✅ MusicXML generation with basic metadata (key, tempo, time signature)
+- ✅ MIDI generation with basic metadata (key, tempo, time signature)
 - ❌ Multi-instrument transcription (future)
 
 **Limitation**: Assumes video has piano/keyboard in the mix. Works best for:
@@ -40,7 +40,7 @@ graph TB
 ---
 
 ### 2. Notation Display
-- ✅ Render MusicXML with VexFlow
+- ✅ Render MIDI with VexFlow
 - ✅ Single staff (treble clef)
 - ✅ Basic note display (pitches, durations)
 - ❌ Grand staff (treble + bass) - future
@@ -72,7 +72,7 @@ graph TB
 ---
 
 ### 5. Export
-- ✅ Download MusicXML
+- ✅ Download MIDI
 - ✅ Download MIDI
 - ❌ PDF export - future (requires server-side rendering)
 
@@ -105,7 +105,7 @@ graph TB
 1. **Transcription works**: 70%+ accuracy on piano-only YouTube videos
 2. **Editable output**: Users can fix transcription errors with basic edits
 3. **Playback works**: Audio sounds recognizable, tempo control works
-4. **Export works**: MusicXML opens correctly in MuseScore/Finale/Sibelius
+4. **Export works**: MIDI can be imported into DAWs
 
 ### MVP Fails If:
 
@@ -125,10 +125,10 @@ graph TB
 - [ ] Implement YouTube download with yt-dlp
 - [ ] Integrate Demucs for source separation
 - [ ] Integrate basic-pitch for transcription
-- [ ] MIDI → MusicXML conversion with music21
+- [ ] MIDI parsing and rendering
 - [ ] Test with 5-10 sample YouTube videos
 
-**Deliverable**: Backend API that accepts URL, returns MusicXML
+**Deliverable**: Backend API that accepts URL, returns MIDI
 
 ---
 
@@ -151,7 +151,7 @@ graph TB
 - [ ] React + Vite setup
 - [ ] Job submission form (YouTube URL input)
 - [ ] WebSocket connection for progress
-- [ ] MusicXML parser (musicxml-interfaces)
+- [ ] MIDI parser (@tonejs/midi)
 - [ ] VexFlow rendering (simple, single staff)
 - [ ] Basic UI/UX (progress bar, status messages)
 
@@ -179,7 +179,7 @@ graph TB
 - [ ] Tone.js integration
 - [ ] Play/pause controls
 - [ ] Tempo slider
-- [ ] MusicXML export (download)
+- [ ] MIDI export (download)
 - [ ] MIDI export (download)
 
 **Deliverable**: Complete MVP with playback and export
@@ -208,7 +208,7 @@ graph TB
 
 ### Integration Tests
 
-- End-to-end: Submit URL → Receive MusicXML → Render → Edit → Export
+- End-to-end: Submit URL → Receive MIDI → Render → Edit → Export
 
 ### Manual Testing
 

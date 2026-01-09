@@ -418,41 +418,10 @@ async def get_job_status(job_id: str):
     )
 
 
-@app.get("/api/v1/scores/{job_id}")
-async def download_score(job_id: str):
-    """
-    Download MusicXML score.
-
-    Args:
-        job_id: Job identifier
-
-    Returns:
-        MusicXML file
-    """
-    job_data = redis_client.hgetall(f"job:{job_id}")
-
-    if not job_data or job_data.get('status') != 'completed':
-        raise HTTPException(status_code=404, detail="Score not available")
-
-    output_path = job_data.get('output_path')
-    if not output_path:
-        raise HTTPException(status_code=404, detail="Score file path not found")
-
-    file_path = Path(output_path)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Score file not found")
-
-    return FileResponse(
-        path=file_path,
-        media_type="application/vnd.recordare.musicxml+xml",
-        filename=f"score_{job_id}.musicxml"
-    )
-
-
-@app.get("/api/v1/scores/{job_id}/midi")
+@app.get("/api/v1/midi/{job_id}")
 async def download_midi(job_id: str):
     """
-    Download MIDI version of score.
+    Download MIDI file.
 
     For MVP, this returns the cleaned MIDI from transcription (piano_clean.mid).
 

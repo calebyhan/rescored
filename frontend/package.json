@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
-    "@xmldom/xmldom": "^0.8.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tone": "^15.1.3",

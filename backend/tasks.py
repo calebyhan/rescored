@@ -73,7 +73,7 @@ def process_transcription_task(self, job_id: str):
         job_id: Unique job identifier
 
     Returns:
-        Path to generated MusicXML file
+        Path to generated MIDI file
     """
     try:
         # Mark job as started
@@ -198,33 +198,25 @@ def process_transcription_task(self, job_id: str):
         midi_path = pipeline.apply_post_processing_filters(filtered_midi)
         pipeline.final_midi_path = midi_path
 
-        # Get audio stem for MusicXML generation (use piano if available, otherwise first available stem)
-        audio_stem = stems_to_transcribe.get('piano') or list(stems_to_transcribe.values())[0]
+        # Pipeline already returns MIDI path, no need for MusicXML generation
+        # The final MIDI is stored in pipeline.final_midi_path
 
-        pipeline.progress(90, "musicxml", "Generating MusicXML")
-        temp_output_path = pipeline.generate_musicxml_minimal(midi_path, audio_stem)
-        pipeline.progress(100, "complete", "Transcription complete")
-
-        # Output is already in the temp directory, move to persistent storage
-        output_path = settings.outputs_path / f"{job_id}.musicxml"
-        midi_path = settings.outputs_path / f"{job_id}.mid"
+        # Output path for persistent storage
+        output_midi_path = settings.outputs_path / f"{job_id}.mid"
 
         # Ensure outputs directory exists
         settings.outputs_path.mkdir(parents=True, exist_ok=True)
 
-        # Copy the MusicXML file to outputs
-        shutil.copy(str(temp_output_path), str(output_path))
-
         # Copy the MIDI file to outputs (use actual processed MIDI from pipeline)
-        # Pipeline stores the final MIDI path (after quantization) in final_midi_path
-        temp_midi_path = getattr(pipeline, 'final_midi_path', pipeline.temp_dir / "piano.mid")
+        # Pipeline stores the final MIDI path (after all processing) in final_midi_path
+        temp_midi_path = getattr(pipeline, 'final_midi_path', midi_path)
         print(f"[DEBUG] Using MIDI from pipeline: {temp_midi_path}")
         print(f"[DEBUG] MIDI exists: {temp_midi_path.exists()}")
 
         if temp_midi_path.exists():
-            print(f"[DEBUG] Copying MIDI from {temp_midi_path} to {midi_path}")
-            shutil.copy(str(temp_midi_path), str(midi_path))
-            print(f"[DEBUG] Copy complete, destination exists: {midi_path.exists()}")
+            print(f"[DEBUG] Copying MIDI from {temp_midi_path} to {output_midi_path}")
+            shutil.copy(str(temp_midi_path), str(output_midi_path))
+            print(f"[DEBUG] Copy complete, destination exists: {output_midi_path.exists()}")
         else:
             print(f"[DEBUG] WARNING: No MIDI file found at {temp_midi_path}!")
 
@@ -242,8 +234,7 @@ def process_transcription_task(self, job_id: str):
         redis_client.hset(f"job:{job_id}", mapping={
             "status": "completed",
             "progress": 100,
-            "output_path": str(output_path.absolute()),
-            "midi_path": str(midi_path.absolute()) if temp_midi_path.exists() else "",
+            "midi_path": str(output_midi_path.absolute()) if temp_midi_path.exists() else "",
             "metadata": json.dumps(metadata),
             "completed_at": datetime.utcnow().isoformat(),
         })
@@ -252,12 +243,12 @@ def process_transcription_task(self, job_id: str):
         completion_msg = {
             "type": "completed",
             "job_id": job_id,
-            "result_url": f"/api/v1/scores/{job_id}",
+            "result_url": f"/api/v1/midi/{job_id}",
             "timestamp": datetime.utcnow().isoformat(),
         }
         redis_client.publish(f"job:{job_id}:updates", json.dumps(completion_msg))
 
-        return str(output_path)
+        return str(output_midi_path)
 
     except Exception as e:
         import traceback
