@@ -63,18 +63,13 @@ if [ $TRAIN_FILES -eq 0 ] || [ $VAL_FILES -eq 0 ]; then
     exit 1
 fi
 
-# Load modules
-module load python/3.10
-module load cuda/11.8
+# Load required modules
+echo "Loading modules..."
+module load anaconda
+source activate .venv
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-export PYTHONPATH="$RESCORED_DIR:$PYTHONPATH"
+# Set Python path
+export PYTHONPATH="$RESCORED_DIR:${PYTHONPATH:-}"
 
 # GPU info
 echo "GPU Information:"
