@@ -588,6 +588,30 @@ class TranscriptionPipeline:
             )
 
             print(f"   ✓ Ensemble transcription complete")
+
+            # Phase 1.3: BiLSTM Refinement (if enabled)
+            if self.config.enable_bilstm_refinement:
+                try:
+                    from backend.refinement.bilstm_refiner import BiLSTMRefinementPipeline
+
+                    print(f"\n   Applying BiLSTM refinement...")
+                    refiner = BiLSTMRefinementPipeline(
+                        checkpoint_path=self.config.bilstm_checkpoint_path,
+                        device=self.device,
+                        fps=self.config.bilstm_fps
+                    )
+
+                    midi_path = refiner.refine_midi(
+                        midi_path,
+                        output_dir=output_dir,
+                        threshold=self.config.bilstm_threshold
+                    )
+
+                    print(f"   ✓ BiLSTM refinement complete")
+                except Exception as bilstm_error:
+                    print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                    print(f"   Continuing with ensemble output...")
+
             return midi_path
 
         except Exception as e:

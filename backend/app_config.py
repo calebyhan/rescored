@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     tta_min_votes: int = 3  # Minimum augmentations that must predict a note
     tta_onset_tolerance_ms: int = 50  # Time window for matching notes across augmentations
 
+    # Phase 1.3: BiLSTM Refinement
+    enable_bilstm_refinement: bool = False  # Enable after training model
+    bilstm_checkpoint_path: Path = Path("backend/refinement/checkpoints/bilstm_best.pt")
+    bilstm_fps: int = 100  # Frames per second for piano roll conversion
+    bilstm_threshold: float = 0.5  # Onset probability threshold
+
     # Audio Preprocessing Configuration
     enable_audio_preprocessing: bool = True  # Preprocess audio before separation/transcription
     enable_audio_denoising: bool = True  # Remove background noise and artifacts
