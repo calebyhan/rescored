@@ -168,51 +168,67 @@ export function PlaybackControls(props: PlaybackControlsProps) {
       let partTime = 0;
 
       part.measures.forEach((measure) => {
-        let i = 0;
+        // Group notes by chordId for accurate chord detection (notes within 50ms tolerance)
+        const notesByChord: Record<string, Note[]> = {};
+        const noteOrder: string[] = [];
 
-        while (i < measure.notes.length) {
-          const currentNote = measure.notes[i];
+        for (let i = 0; i < measure.notes.length; i++) {
+          const note = measure.notes[i];
 
-          if (currentNote.isRest) {
-            // Rest: just advance time
-            const restDuration = durationToSeconds(currentNote.duration, tempo, currentNote.dotted);
+          if (note.isRest) {
+            // Create unique group for each rest
+            const restId = `rest-${i}`;
+            notesByChord[restId] = [note];
+            noteOrder.push(restId);
+          } else {
+            // Group by chordId (assigned by MIDI parser based on simultaneous notes)
+            const chordId = note.chordId || `single-${note.id}`;
+            if (!notesByChord[chordId]) {
+              notesByChord[chordId] = [];
+              noteOrder.push(chordId);
+            }
+            notesByChord[chordId].push(note);
+          }
+        }
+
+        // Schedule each chord group in order (maintains temporal sequence)
+        const processedChordIds = new Set<string>();
+
+        for (const chordId of noteOrder) {
+          // Skip if already processed (chord spans multiple notes)
+          if (processedChordIds.has(chordId)) continue;
+          processedChordIds.add(chordId);
+
+          const chordNotes = notesByChord[chordId];
+          const firstNote = chordNotes[0];
+
+          if (firstNote.isRest) {
+            // Rest: advance time and continue
+            const restDuration = durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
             partTime += restDuration;
-            i++;
             continue;
           }
 
-          // Collect all consecutive notes with same duration (chord detection)
-          const chordNotes: Note[] = [currentNote];
-          let j = i + 1;
-
-          while (j < measure.notes.length &&
-                 !measure.notes[j].isRest &&
-                 measure.notes[j].duration === currentNote.duration &&
-                 measure.notes[j].dotted === currentNote.dotted) {
-            chordNotes.push(measure.notes[j]);
-            j++;
-          }
-
-          // Calculate duration once for the chord
-          const noteDuration = durationToSeconds(currentNote.duration, tempo, currentNote.dotted);
+          // Calculate note duration and time
+          const noteDuration = durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
+          const noteTime = partTime;
 
           // Find or create timeline entry for this time
-          let timelineEntry = timeline.find(e => Math.abs(e.time - partTime) < 0.001);
+          let timelineEntry = timeline.find(e => Math.abs(e.time - noteTime) < 0.001);
           if (!timelineEntry) {
-            timelineEntry = { time: partTime, duration: noteDuration, notes: [] };
+            timelineEntry = { time: noteTime, duration: noteDuration, notes: [] };
             timeline.push(timelineEntry);
           }
 
-          // Add all chord notes to this timeline entry
+          // Add all notes in this chord to the timeline entry (they play simultaneously)
           chordNotes.forEach((note) => {
             if (note.pitch) {
               timelineEntry!.notes.push({ pitch: note.pitch, id: note.id });
             }
           });
 
-          // Advance time by the chord duration (only once, not per note)
+          // Advance time by the note duration
           partTime += noteDuration;
-          i = j;
         }
       });
     });

@@ -114,6 +114,63 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
     });
   }, [playingNoteIds]);
 
+  // Highlight selected notes
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Remove all previous selections
+    const allNotes = containerRef.current.querySelectorAll('.vf-stavenote');
+    allNotes.forEach((noteEl) => {
+      noteEl.classList.remove('selected');
+    });
+
+    // If no notes are selected, we're done
+    if (!selectedNotes || selectedNotes.length === 0) return;
+
+    // Highlight selected notes
+    selectedNotes.forEach((noteId) => {
+      const noteElements = containerRef.current?.querySelectorAll('.vf-stavenote[data-note-id]');
+      noteElements?.forEach((noteElement) => {
+        const dataIds = noteElement.getAttribute('data-note-id');
+        if (dataIds && dataIds.split(',').includes(noteId)) {
+          noteElement.classList.add('selected');
+        }
+      });
+    });
+  }, [selectedNotes]);
+
+  // Add click handlers for interactive mode
+  useEffect(() => {
+    if (!containerRef.current || !interactive || !onNoteSelect) return;
+
+    const noteElements = containerRef.current.querySelectorAll('.vf-stavenote[data-note-id]');
+
+    const handleNoteClick = (event: Event) => {
+      const target = event.currentTarget as SVGElement;
+      const dataIds = target.getAttribute('data-note-id');
+
+      if (dataIds) {
+        // For chords (comma-separated IDs), select all notes in the chord
+        const noteIds = dataIds.split(',');
+        noteIds.forEach(id => onNoteSelect(id));
+      }
+    };
+
+    // Attach click handlers and set cursor style
+    noteElements.forEach((elem) => {
+      elem.addEventListener('click', handleNoteClick);
+      (elem as SVGElement).style.cursor = 'pointer';
+    });
+
+    // Cleanup function to remove event listeners
+    return () => {
+      noteElements.forEach((elem) => {
+        elem.removeEventListener('click', handleNoteClick);
+        (elem as SVGElement).style.cursor = '';
+      });
+    };
+  }, [score, interactive, onNoteSelect]); // Re-run when score changes
+
   return (
     <div className="notation-canvas-wrapper">
       {showControls && (

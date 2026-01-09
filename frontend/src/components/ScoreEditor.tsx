@@ -25,6 +25,8 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const setActiveInstrument = useNotationStore((state) => state.setActiveInstrument);
   const score = useNotationStore((state) => state.score);
   const setTempo = useNotationStore((state) => state.setTempo);
+  const selectNote = useNotationStore((state) => state.selectNote);
+  const selectedNoteIds = useNotationStore((state) => state.selectedNoteIds);
 
   useEffect(() => {
     loadScore();
@@ -71,15 +73,56 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
     }
   };
 
+  // Keyboard handlers for editing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Get latest state values
+      const { selectedNoteIds, deleteNote, updateNote, deselectAll } = useNotationStore.getState();
+
+      // Delete key - remove selected notes
+      if (e.key === 'Delete' && selectedNoteIds.length > 0) {
+        selectedNoteIds.forEach(id => deleteNote(id));
+        deselectAll();
+        e.preventDefault(); // Prevent default browser behavior
+      }
+
+      // Number keys 1-8 - change note duration
+      if (e.key >= '1' && e.key <= '8' && selectedNoteIds.length > 0) {
+        const durations = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th'];
+        const newDuration = durations[parseInt(e.key) - 1];
+        selectedNoteIds.forEach(id => updateNote(id, { duration: newDuration }));
+        e.preventDefault();
+      }
+
+      // Escape key - deselect all notes
+      if (e.key === 'Escape' && selectedNoteIds.length > 0) {
+        deselectAll();
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []); // Empty deps - uses getState() for latest values
+
   const handleExportMIDI = async () => {
     try {
-      // Download the original MIDI file
-      const midiData = await getMidiFile(jobId);
+      // Export the current edited score (not the original MIDI from backend)
+      if (!score) {
+        alert('No score loaded');
+        return;
+      }
+
+      // Generate MIDI from current score state (includes all edits)
+      const { generateMidiFromScore } = await import('../utils/midi-exporter');
+      const midiData = generateMidiFromScore(score);
+
+      // Download the MIDI file
       const blob = new Blob([midiData], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `score_${jobId}.mid`;
+      a.download = `score_${activeInstrument}_edited.mid`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -183,7 +226,11 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       {/* Right Main Area - Notation Canvas */}
       <main className="editor-main">
         <div className="editor-main-content">
-          <NotationCanvas />
+          <NotationCanvas
+            interactive={true}
+            onNoteSelect={(noteId) => selectNote(noteId)}
+            selectedNotes={selectedNoteIds}
+          />
         </div>
       </main>
     </div>

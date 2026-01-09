@@ -226,7 +226,15 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       };
     }),
 
-  selectNote: (noteId) => set({ selectedNoteIds: [noteId] }),
+  selectNote: (noteId) =>
+    set((state) => {
+      const isSelected = state.selectedNoteIds.includes(noteId);
+      return {
+        selectedNoteIds: isSelected
+          ? state.selectedNoteIds.filter(id => id !== noteId) // Toggle off if already selected
+          : [...state.selectedNoteIds, noteId], // Toggle on if not selected
+      };
+    }),
 
   deselectAll: () => set({ selectedNoteIds: [] }),
 

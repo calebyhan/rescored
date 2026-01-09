@@ -435,9 +435,21 @@ class TranscriptionPipeline:
         # Detect tempo from source audio for accurate post-processing
         source_audio = self.temp_dir / "audio.wav"
         if source_audio.exists():
-            detected_tempo, _ = self.detect_tempo_from_audio(source_audio)
+            detected_tempo, confidence = self.detect_tempo_from_audio(source_audio)
+            # Store detected tempo in metadata for API access
+            self.metadata["tempo"] = detected_tempo
+            print(f"   Detected tempo: {detected_tempo:.1f} BPM (confidence: {confidence:.2f})")
+
+            # Detect time signature
+            try:
+                numerator, denominator, ts_confidence = self.detect_time_signature(source_audio, detected_tempo)
+                self.metadata["time_signature"] = {"numerator": numerator, "denominator": denominator}
+            except Exception as e:
+                print(f"   WARNING: Time signature detection failed: {e}")
+                # Keep default 4/4
         else:
             detected_tempo = 120.0
+            self.metadata["tempo"] = detected_tempo
 
         # Conditional post-processing based on transcriber
         if self.config.use_yourmt3_transcription:
