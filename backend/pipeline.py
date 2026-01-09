@@ -14,28 +14,18 @@ import numpy as np
 # basic-pitch removed - using YourMT3+ only
 from music21 import converter, key, meter, tempo, note, clef, stream, chord as m21_chord
 
-# Phase 2: Zero-tradeoff solutions with Python 3.10+ compatibility patch
+# Using Essentia for tempo/beat detection (replaces madmom, numpy 2.x compatible)
 try:
-    # Apply runtime patch for Python 3.10+ compatibility
-    try:
-        from backend.madmom_patch import patch_madmom
-    except ImportError:
-        from madmom_patch import patch_madmom
-    patch_madmom()
-
-    import madmom
-    import madmom.features.beats
-    import madmom.features.downbeats
-    import madmom.features.tempo
-    MADMOM_AVAILABLE = True
+    import essentia.standard as es
+    ESSENTIA_AVAILABLE = True
 except ImportError as e:
-    MADMOM_AVAILABLE = False
-    print(f"WARNING: madmom not available. Falling back to librosa for tempo/beat detection.")
+    ESSENTIA_AVAILABLE = False
+    print(f"WARNING: essentia not available. Falling back to librosa for tempo/beat detection.")
     print(f"         Error: {e}")
 
 # Import wrapper modules at top level
 try:
-    from backend.audio_separator_wrapper import AudioSeparator
+    from audio_separator_wrapper import AudioSeparator
     AUDIO_SEPARATOR_AVAILABLE = True
 except ImportError as e:
     AUDIO_SEPARATOR_AVAILABLE = False
@@ -43,7 +33,7 @@ except ImportError as e:
     print(f"WARNING: audio_separator_wrapper not available: {e}")
 
 try:
-    from backend.yourmt3_wrapper import YourMT3Transcriber
+    from yourmt3_wrapper import YourMT3Transcriber
     YOURMT3_AVAILABLE = True
 except ImportError as e:
     YOURMT3_AVAILABLE = False
@@ -51,7 +41,7 @@ except ImportError as e:
     print(f"WARNING: yourmt3_wrapper not available: {e}")
 
 try:
-    from backend.bytedance_wrapper import ByteDanceTranscriber
+    from bytedance_wrapper import ByteDanceTranscriber
     BYTEDANCE_AVAILABLE = True
 except ImportError as e:
     BYTEDANCE_AVAILABLE = False
@@ -59,7 +49,7 @@ except ImportError as e:
     print(f"WARNING: bytedance_wrapper not available: {e}")
 
 try:
-    from backend.ensemble_transcriber import EnsembleTranscriber
+    from ensemble_transcriber import EnsembleTranscriber
     ENSEMBLE_AVAILABLE = True
 except ImportError as e:
     ENSEMBLE_AVAILABLE = False
@@ -1254,8 +1244,8 @@ class TranscriptionPipeline:
         Returns:
             Path to beat-quantized MIDI file
         """
-        if not MADMOM_AVAILABLE:
-            print(f"   WARNING: madmom not available, skipping beat-synchronous quantization")
+        if not ESSENTIA_AVAILABLE:
+            print(f"   WARNING: essentia not available, skipping beat-synchronous quantization")
             return midi_path
 
         print(f"   Applying beat-synchronous quantization...")
@@ -2256,34 +2246,31 @@ class TranscriptionPipeline:
 
         print(f"   Detecting tempo from audio...")
 
-        # PHASE 2: Use madmom multi-scale tempo detection (ZERO-TRADEOFF)
-        if MADMOM_AVAILABLE:
-            return self._detect_tempo_madmom_multiscale(audio_path, duration)
+        # PHASE 2: Use essentia tempo detection (replaces madmom)
+        if ESSENTIA_AVAILABLE:
+            return self._detect_tempo_essentia(audio_path, duration)
 
         # FALLBACK: Use librosa (original method)
         return self._detect_tempo_librosa(audio_path, duration)
 
-    def _detect_tempo_madmom_multiscale(self, audio_path: Path, duration: int) -> tuple[float, float]:
+    def _detect_tempo_essentia(self, audio_path: Path, duration: int) -> tuple[float, float]:
         """
-        Multi-scale tempo detection using madmom (ZERO-TRADEOFF solution).
-
-        Uses consistency across time scales to eliminate octave errors.
-        Octave errors (60 vs 120 BPM) are inconsistent between short/long windows.
-        Real tempo is stable across all time scales.
+        Tempo detection using Essentia (replaces madmom, numpy 2.x compatible).
 
         Returns:
             (tempo_bpm, confidence) where confidence is 0-1
         """
-        print(f"   Using madmom multi-scale tempo detection (eliminates octave errors)...")
+        print(f"   Using Essentia tempo detection...")
 
-        # Process audio to get beat activations
-        act = madmom.features.beats.RNNBeatProcessor()(str(audio_path))
+        # Load audio
+        y, sr = librosa.load(str(audio_path), sr=44100, mono=True, duration=duration)
 
-        # Multi-scale tempo processor (operates on activations, not raw audio)
-        tempo_processor = madmom.features.tempo.TempoEstimationProcessor(fps=100)
+        # Use Essentia's RhythmExtractor2013 for tempo detection
+        import essentia.standard as es
+        rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
+        bpm, beat_times, confidence, estimates, intervals = rhythm_extractor(y)
 
-        # Get tempo candidates from multi-scale analysis
-        tempo_result = tempo_processor(act)
+        tempo_result = [[bpm, confidence]]
 
         # tempo_result is 2D array where each row is [tempo_bpm, strength]
         # Extract candidates
@@ -2384,21 +2371,24 @@ class TranscriptionPipeline:
         Returns:
             (beat_times, downbeat_times) in seconds
         """
-        if not MADMOM_AVAILABLE:
-            print(f"   WARNING: madmom not available, falling back to librosa beat tracking")
+        if not ESSENTIA_AVAILABLE:
+            print(f"   WARNING: essentia not available, falling back to librosa beat tracking")
             return self._detect_beats_librosa(audio_path)
 
-        print(f"   Detecting beats with madmom...")
+        print(f"   Detecting beats with Essentia...")
 
-        # Process audio to get beat activations
-        beat_act = madmom.features.beats.RNNBeatProcessor()(str(audio_path))
+        # Load audio
+        y, sr = librosa.load(str(audio_path), sr=44100, mono=True, duration=120)
 
-        # Beat tracking processor (operates on activations)
-        beat_processor = madmom.features.beats.BeatTrackingProcessor(fps=100)
-        beats = beat_processor(beat_act)
+        # Use Essentia's RhythmExtractor2013 for beat detection
+        import essentia.standard as es
+        rhythm_extractor = es.RhythmExtractor2013(method="multifeature")
+        bpm, beat_times, confidence, estimates, intervals = rhythm_extractor(y)
+
+        # Convert beat_times to numpy array
+        beats = np.array(beat_times)
 
         # Estimate downbeats (every 4th beat for 4/4 time - simple heuristic)
-        # More sophisticated downbeat detection with madmom can be added later if needed
         downbeats = beats[::4] if len(beats) > 0 else np.array([])
 
         print(f"   Detected {len(beats)} beats, {len(downbeats)} estimated downbeats")

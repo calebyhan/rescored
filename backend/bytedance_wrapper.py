@@ -184,19 +184,54 @@ class ByteDanceTranscriber:
         # Load generated MIDI to map confidence to notes
         pm = pretty_midi.PrettyMIDI(str(midi_path))
 
+        # Check if we have the required rolls
+        if transcription_result is None or not isinstance(transcription_result, dict):
+            print(f"   WARNING: ByteDance transcribe() returned {type(transcription_result)}, expected dict")
+            # Return without confidence scores
+            return {
+                'midi_path': midi_path,
+                'note_confidences': [],
+                'raw_onset_roll': None,
+                'raw_offset_roll': None,
+                'raw_velocity_roll': None
+            }
+
+        # Extract output_dict from transcription result
+        # ByteDance returns: {'output_dict': {...}, 'est_note_events': [...], 'est_pedal_events': [...]}
+        output_dict = transcription_result.get('output_dict', {})
+
+        # Get the rolls from output_dict
+        # Keys are: 'reg_onset_output', 'reg_offset_output', 'frame_output', 'velocity_output'
+        onset_roll = output_dict.get('reg_onset_output')
+        offset_roll = output_dict.get('reg_offset_output')
+        velocity_roll = output_dict.get('velocity_output')
+
+        if onset_roll is None or offset_roll is None:
+            print(f"   WARNING: ByteDance result missing reg_onset_output or reg_offset_output")
+            print(f"   Result keys: {transcription_result.keys() if transcription_result else 'None'}")
+            print(f"   Output dict keys: {output_dict.keys() if output_dict else 'None'}")
+            # Return without confidence scores
+            return {
+                'midi_path': midi_path,
+                'note_confidences': [],
+                'raw_onset_roll': onset_roll,
+                'raw_offset_roll': offset_roll,
+                'raw_velocity_roll': velocity_roll
+            }
+
         # Extract note-level confidence from frame-level predictions
         note_confidences = self._extract_note_confidences_from_rolls(
             pm,
-            transcription_result.get('onset_roll'),
-            transcription_result.get('offset_roll')
+            onset_roll,
+            offset_roll
         )
 
         return {
             'midi_path': midi_path,
             'note_confidences': note_confidences,
-            'raw_onset_roll': transcription_result.get('onset_roll'),
-            'raw_offset_roll': transcription_result.get('offset_roll'),
-            'raw_velocity_roll': transcription_result.get('velocity_roll')
+            'raw_onset_roll': onset_roll,
+            'raw_offset_roll': offset_roll,
+            'raw_velocity_roll': velocity_roll
         }
 
     def _extract_note_confidences_from_rolls(
