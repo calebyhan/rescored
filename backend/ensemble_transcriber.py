@@ -127,7 +127,12 @@ class EnsembleTranscriber:
         print(f"   ✓ YourMT3+ found {len(yourmt3_notes)} notes")
 
         # Validate piano stem quality before ByteDance
-        from app_config import settings
+        # Try absolute import first (for cluster), then relative (for local)
+        try:
+            from backend.app_config import settings
+        except ImportError:
+            from app_config import settings
+
         stem_quality_ok = self._validate_stem_quality(
             audio_path,
             enable_validation=settings.enable_stem_quality_validation
@@ -310,7 +315,11 @@ class EnsembleTranscriber:
         This allows ByteDance's low-confidence notes to be downweighted appropriately.
         """
         # Import config for asymmetric thresholds
-        from app_config import settings
+        # Try absolute import first (for cluster), then relative (for local)
+        try:
+            from backend.app_config import settings
+        except ImportError:
+            from app_config import settings
 
         # Model weights (configurable)
         if settings.use_asymmetric_thresholds:
@@ -636,7 +645,11 @@ class EnsembleTranscriber:
             True if ByteDance failed, False otherwise
         """
         # Import config
-        from app_config import settings
+        # Try absolute import first (for cluster), then relative (for local)
+        try:
+            from backend.app_config import settings
+        except ImportError:
+            from app_config import settings
 
         yourmt3_count = len(yourmt3_notes)
         bytedance_count = len(bytedance_notes)
