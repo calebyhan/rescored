@@ -118,7 +118,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       const midiData = generateMidiFromScore(score);
 
       // Download the MIDI file
-      const blob = new Blob([midiData], { type: 'audio/midi' });
+      const blob = new Blob([midiData.buffer as ArrayBuffer], { type: 'audio/midi' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -142,7 +142,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
         if (!instrumentScore) continue;
 
         const midiData = generateMidiFromScore(instrumentScore);
-        const blob = new Blob([midiData], { type: 'audio/midi' });
+        const blob = new Blob([midiData.buffer as ArrayBuffer], { type: 'audio/midi' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

@@ -40,7 +40,7 @@ export function PlaybackControls(props: PlaybackControlsProps) {
   const [isPlaying, setIsPlaying] = useState<boolean>(props?.isPlaying ?? false);
   const [tempo, setTempo] = useState<number>(props?.tempo ?? 120);
   const [currentPosition, setCurrentPosition] = useState<number>(props?.currentTime ?? 0); // Current playback position in seconds
-  const samplerRef = useRef<Tone.Sampler | null>(null);
+  const samplerRef = useRef<Tone.Sampler | Tone.PolySynth | null>(null);
   const scheduledEventsRef = useRef<number[]>([]); // Store Tone event IDs for cleanup
   const animationFrameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -63,7 +63,6 @@ export function PlaybackControls(props: PlaybackControlsProps) {
 
       // Create instrument-specific sampler
       samplerRef.current = createInstrumentSampler(activeInstrument as any);
-      setIsReady(true);
     });
 
     return () => {

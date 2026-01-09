@@ -3,7 +3,7 @@
  * This allows users to export their edited scores
  */
 import { Midi, Track } from '@tonejs/midi';
-import { Score, Note } from '../store/notation';
+import type { Score, Note } from '../store/notation';
 
 /**
  * Generate MIDI file from current Score state
