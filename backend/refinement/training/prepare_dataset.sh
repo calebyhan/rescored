@@ -1,14 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=bilstm_prep
-#SBATCH --output=logs/slurm/bilstm_prep_%j.log
-#SBATCH --error=logs/slurm/bilstm_prep_%j.err
+#SBATCH --output=/work/users/c/a/calebhan/rescored/logs/slurm/bilstm_prep_%j.log
+#SBATCH --error=/work/users/c/a/calebhan/rescored/logs/slurm/bilstm_prep_%j.err
 #SBATCH --time=3-00:00:00              # 3 days for dataset preparation
 #SBATCH --cpus-per-task=8              # 8 CPUs for transcription
 #SBATCH --mem=64G                      # 64GB RAM
-#SBATCH --partition=gpu                # GPU partition for faster transcription
+#SBATCH --partition=l40-gpu                # GPU partition for faster transcription
+#SBATCH --qos=gpu_access             # Required QoS
 #SBATCH --gres=gpu:1                   # 1 GPU
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=calebhan@unc.edu
 
 ################################################################################
 # BiLSTM Dataset Preparation Script

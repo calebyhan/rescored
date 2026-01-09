@@ -1,14 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=bilstm_train
-#SBATCH --output=logs/slurm/bilstm_train_%j.log
-#SBATCH --error=logs/slurm/bilstm_train_%j.err
+#SBATCH --output=/work/users/c/a/calebhan/rescored/logs/slurm/bilstm_train_%j.log
+#SBATCH --error=/work/users/c/a/calebhan/rescored/logs/slurm/bilstm_train_%j.err
 #SBATCH --time=1-00:00:00              # 1 day for training
 #SBATCH --cpus-per-task=8              # 8 CPUs
 #SBATCH --mem=64G                      # 64GB RAM
-#SBATCH --partition=gpu                # GPU partition
+#SBATCH --partition=l40-gpu                # GPU partition
+#SBATCH --qos=gpu_access             # Required QoS
 #SBATCH --gres=gpu:1                   # 1 GPU (A100 preferred)
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=calebhan@unc.edu
 
 ################################################################################
 # BiLSTM Training Script
