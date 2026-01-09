@@ -162,7 +162,12 @@ class ByteDanceTranscriber:
         # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
         import soundfile as sf
         import librosa
-        from app_config import settings
+
+        # Try absolute import first (for cluster), then relative (for local)
+        try:
+            from backend.app_config import settings
+        except ImportError:
+            from app_config import settings
 
         audio, sr = sf.read(str(audio_path), dtype='float32')
         # Convert to mono if stereo
@@ -228,7 +233,12 @@ class ByteDanceTranscriber:
         # Load audio using soundfile instead of audioread (avoids ffmpeg dependency)
         import soundfile as sf
         import librosa
-        from app_config import settings
+
+        # Try absolute import first (for cluster), then relative (for local)
+        try:
+            from backend.app_config import settings
+        except ImportError:
+            from app_config import settings
 
         audio, sr = sf.read(str(audio_path), dtype='float32')
         # Convert to mono if stereo
