@@ -179,8 +179,8 @@ def train_bilstm(
         optimizer,
         mode='min',
         factor=0.5,
-        patience=5,
-        verbose=True
+        patience=5
+        # Note: 'verbose' parameter removed (deprecated in PyTorch 2.x)
     )
 
     # Training loop
