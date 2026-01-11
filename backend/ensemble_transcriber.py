@@ -106,7 +106,7 @@ class EnsembleTranscriber:
                 pitch_shifts=tta_config.get('pitch_shifts', [-1, 0, +1]),
                 time_stretches=tta_config.get('time_stretches', [0.95, 1.0, 1.05]),
                 min_votes=tta_config.get('min_votes', 3),
-                onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 50)
+                onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 100)  # Increased for augmentation alignment
             )
 
             # TTA will call self.transcribe() without use_tta for each augmentation

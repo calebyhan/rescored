@@ -154,11 +154,12 @@ class TTAugmenter:
             midi_path = transcriber.transcribe(aug_path)
             print(f"   ✓ Transcription complete: {midi_path.name}")
 
-            # Store result with weight
+            # Store result with weight and strategy for timing adjustment
             aug_results.append({
                 'name': strategy.name,
                 'midi_path': midi_path,
-                'weight': strategy.weight
+                'weight': strategy.weight,
+                'strategy': strategy  # Need this to reverse timing adjustments
             })
 
             # Clean up temp audio (keep MIDI for debugging)
@@ -203,16 +204,35 @@ class TTAugmenter:
         all_notes = []
         for result in aug_results:
             pm = pretty_midi.PrettyMIDI(str(result['midi_path']))
+            strategy = result['strategy']
 
             for instrument in pm.instruments:
                 if instrument.is_drum:
                     continue
 
                 for note in instrument.notes:
+                    # Reverse the augmentation's timing effects
+                    # For time stretch: if we stretched by 1.05x, divide by 1.05 to restore original timing
+                    if 'stretch' in strategy.name:
+                        # Extract stretch factor from name (e.g., "stretch_1.05x" -> 1.05)
+                        stretch_factor = float(strategy.name.split('_')[1].replace('x', ''))
+                        adjusted_onset = note.start / stretch_factor
+                        adjusted_offset = note.end / stretch_factor
+                    else:
+                        adjusted_onset = note.start
+                        adjusted_offset = note.end
+
+                    # Reverse pitch shift effect (if any)
+                    adjusted_pitch = note.pitch
+                    if 'shift' in strategy.name:
+                        # Extract shift amount from name (e.g., "shift_+1" -> +1)
+                        shift_amount = int(strategy.name.split('_')[1].replace('+', ''))
+                        adjusted_pitch = note.pitch - shift_amount
+
                     all_notes.append(Note(
-                        pitch=note.pitch,
-                        onset=note.start,
-                        offset=note.end,
+                        pitch=adjusted_pitch,
+                        onset=adjusted_onset,
+                        offset=adjusted_offset,
                         velocity=note.velocity,
                         confidence=result['weight']
                     ))
