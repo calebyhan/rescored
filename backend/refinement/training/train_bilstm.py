@@ -105,7 +105,7 @@ def train_bilstm(
     train_dir: Path,
     val_dir: Path,
     output_dir: Path,
-    batch_size: int = 16,
+    batch_size: int = 8,  # Reduced from 16 to avoid OOM with attention
     lr: float = 1e-3,
     epochs: int = 50,
     device: str = 'cuda'
@@ -140,8 +140,9 @@ def train_bilstm(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load datasets
-    train_dataset = MAESTROPianoRollDataset(train_dir, max_length=10000)
-    val_dataset = MAESTROPianoRollDataset(val_dir, max_length=10000)
+    # Reduced max_length to 5000 (50s @ 100fps) to avoid OOM with attention mechanism
+    train_dataset = MAESTROPianoRollDataset(train_dir, max_length=5000)
+    val_dataset = MAESTROPianoRollDataset(val_dir, max_length=5000)
 
     train_loader = DataLoader(
         train_dataset,
