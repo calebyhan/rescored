@@ -105,7 +105,7 @@ class EnsembleTranscriber:
                 augmentations=tta_config.get('augmentations', ['pitch_shift', 'time_stretch']),
                 pitch_shifts=tta_config.get('pitch_shifts', [-1, 0, +1]),
                 time_stretches=tta_config.get('time_stretches', [0.95, 1.0, 1.05]),
-                min_votes=tta_config.get('min_votes', 3),
+                min_votes=tta_config.get('min_votes', 2),  # Reduced from 3 - require 2 of 5 augmentations to agree
                 onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 100)  # Increased for augmentation alignment
             )
 

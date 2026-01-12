@@ -224,9 +224,10 @@ class TTAugmenter:
 
                     # Reverse pitch shift effect (if any)
                     adjusted_pitch = note.pitch
-                    if 'shift' in strategy.name:
-                        # Extract shift amount from name (e.g., "shift_+1" -> +1)
-                        shift_amount = int(strategy.name.split('_')[1].replace('+', ''))
+                    if 'pitch_' in strategy.name:
+                        # Extract shift amount from name (e.g., "pitch_+1st" -> +1)
+                        shift_str = strategy.name.split('_')[1].replace('st', '')  # "+1st" -> "+1"
+                        shift_amount = int(shift_str)
                         adjusted_pitch = note.pitch - shift_amount
 
                     all_notes.append(Note(
@@ -252,6 +253,14 @@ class TTAugmenter:
             note_groups[key].append(note)
 
         print(f"   Grouped into {len(note_groups)} unique note positions")
+
+        # Debug: check distribution of group sizes
+        group_sizes = [len(g) for g in note_groups.values()]
+        size_counts = {}
+        for s in group_sizes:
+            size_counts[s] = size_counts.get(s, 0) + 1
+        print(f"   Group size distribution: {dict(sorted(size_counts.items()))}")
+        print(f"   Onset tolerance: {self.onset_tolerance*1000:.0f}ms, min_votes: {self.min_votes}")
 
         # Weighted voting
         voted_notes = []
