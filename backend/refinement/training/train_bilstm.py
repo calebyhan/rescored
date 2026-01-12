@@ -74,7 +74,11 @@ class MAESTROPianoRollDataset(Dataset):
 
 def combined_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
-    Combined loss function: BCE + differentiable F1 loss.
+    Combined loss function: Weighted BCE + differentiable soft F1 loss.
+
+    Piano rolls are extremely sparse (~0.1% positive), so we use:
+    1. Weighted BCE to upweight positive samples
+    2. Soft F1 loss that's actually differentiable (no hard threshold)
 
     Args:
         pred: Predicted probabilities (batch, time, 88)
@@ -83,16 +87,25 @@ def combined_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     Returns:
         Combined loss value
     """
-    # Binary cross-entropy
-    bce = nn.functional.binary_cross_entropy(pred, target)
+    # Calculate positive class weight based on sparsity
+    # If 0.5% of data is positive, weight positives 200x more
+    num_pos = target.sum()
+    num_neg = target.numel() - num_pos
+    pos_weight = num_neg / (num_pos + 1e-8)
+    pos_weight = torch.clamp(pos_weight, max=100.0)  # Cap at 100x to avoid instability
 
-    # Differentiable F1 approximation
-    pred_binary = (pred > 0.5).float()
+    # Weighted binary cross-entropy
+    bce = nn.functional.binary_cross_entropy(
+        pred, target,
+        weight=target * pos_weight + (1 - target)  # Weight positives higher
+    )
 
-    # Flatten for F1 computation
-    pred_flat = pred_binary.view(-1)
+    # Differentiable SOFT F1 loss (use predictions directly, not thresholded)
+    # This allows gradients to flow through
+    pred_flat = pred.view(-1)
     target_flat = target.view(-1)
 
+    # Soft counts using probabilities
     tp = (pred_flat * target_flat).sum()
     fp = (pred_flat * (1 - target_flat)).sum()
     fn = ((1 - pred_flat) * target_flat).sum()
@@ -248,6 +261,15 @@ def train_bilstm(
                 tp = np.sum((pred_flat == 1) & (target_flat == 1))
                 fp = np.sum((pred_flat == 1) & (target_flat == 0))
                 fn = np.sum((pred_flat == 0) & (target_flat == 1))
+
+                # Debug output for first batch of first epoch
+                if epoch == 0 and len(val_losses) == 1:
+                    print(f"\n  [DEBUG] First validation batch stats:")
+                    print(f"    Output range: [{outputs.min().item():.4f}, {outputs.max().item():.4f}]")
+                    print(f"    Output mean: {outputs.mean().item():.4f}")
+                    print(f"    Target positives: {int(target_flat.sum())} / {len(target_flat)}")
+                    print(f"    Pred positives (>0.5): {int(pred_flat.sum())}")
+                    print(f"    TP={tp}, FP={fp}, FN={fn}")
 
                 if (tp + fp) > 0 and (tp + fn) > 0:
                     precision = tp / (tp + fp)
