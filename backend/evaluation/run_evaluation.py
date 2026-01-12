@@ -113,8 +113,8 @@ def main():
         '--models',
         type=str,
         nargs='+',
-        default=['baseline', 'phase1.1', 'phase1.2'],
-        choices=['baseline', 'phase1.1', 'phase1.2', 'all'],
+        default=['baseline', 'phase1.1', 'phase1.3'],
+        choices=['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.4', 'all'],
         help='Models to evaluate'
     )
 
@@ -140,13 +140,14 @@ def main():
     models = {}
 
     if 'all' in args.models:
-        args.models = ['baseline', 'phase1.1', 'phase1.2']
+        args.models = ['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.4']
 
-    # Baseline: No confidence filtering, no TTA
+    # Baseline: No confidence filtering, no TTA, no BiLSTM
     if 'baseline' in args.models:
         config_baseline = Settings()
         config_baseline.use_bytedance_confidence = False  # Disable Phase 1.1
         config_baseline.enable_tta = False  # Disable Phase 1.2
+        config_baseline.enable_bilstm_refinement = False  # Disable Phase 1.3
 
         models['baseline'] = create_transcriber(config_baseline, use_tta=False)
 
@@ -155,6 +156,7 @@ def main():
         config_phase1_1 = Settings()
         config_phase1_1.use_bytedance_confidence = True  # Enable Phase 1.1
         config_phase1_1.enable_tta = False  # Disable Phase 1.2
+        config_phase1_1.enable_bilstm_refinement = False  # Disable Phase 1.3
 
         models['phase1.1_confidence'] = create_transcriber(config_phase1_1, use_tta=False)
 
@@ -163,8 +165,37 @@ def main():
         config_phase1_2 = Settings()
         config_phase1_2.use_bytedance_confidence = True  # Enable Phase 1.1
         config_phase1_2.enable_tta = True  # Enable Phase 1.2
+        config_phase1_2.enable_bilstm_refinement = False  # Disable Phase 1.3
 
         models['phase1.2_confidence_tta'] = create_transcriber(config_phase1_2, use_tta=True)
+
+    # Phase 1.3: Confidence filtering + BiLSTM refinement
+    if 'phase1.3' in args.models:
+        config_phase1_3 = Settings()
+        config_phase1_3.use_bytedance_confidence = True  # Enable Phase 1.1
+        config_phase1_3.enable_tta = False  # Disable Phase 1.2
+        config_phase1_3.enable_bilstm_refinement = True  # Enable Phase 1.3
+
+        models['phase1.3_confidence_bilstm'] = create_transcriber(config_phase1_3, use_tta=False)
+
+    # Phase 1.3b: BiLSTM only (no ensemble, no confidence filtering)
+    if 'phase1.3b' in args.models:
+        config_phase1_3b = Settings()
+        config_phase1_3b.use_ensemble_transcription = False  # Disable ensemble (YourMT3+ only)
+        config_phase1_3b.use_bytedance_confidence = False  # Disable Phase 1.1
+        config_phase1_3b.enable_tta = False  # Disable Phase 1.2
+        config_phase1_3b.enable_bilstm_refinement = True  # Enable Phase 1.3
+
+        models['phase1.3b_bilstm_only'] = create_transcriber(config_phase1_3b, use_tta=False)
+
+    # Phase 1.4: Confidence filtering + TTA + BiLSTM (full pipeline)
+    if 'phase1.4' in args.models:
+        config_phase1_4 = Settings()
+        config_phase1_4.use_bytedance_confidence = True  # Enable Phase 1.1
+        config_phase1_4.enable_tta = True  # Enable Phase 1.2
+        config_phase1_4.enable_bilstm_refinement = True  # Enable Phase 1.3
+
+        models['phase1.4_confidence_tta_bilstm'] = create_transcriber(config_phase1_4, use_tta=True)
 
     # Run comparison
     print(f"\nEvaluating {len(models)} configurations:\n")

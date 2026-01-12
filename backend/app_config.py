@@ -113,11 +113,11 @@ class Settings(BaseSettings):
     tta_augmentations: List[str] = ['pitch_shift', 'time_stretch']  # Augmentation types
     tta_pitch_shifts: List[int] = [-1, 0, +1]  # Semitone shifts (0 = original)
     tta_time_stretches: List[float] = [0.95, 1.0, 1.05]  # Time stretch rates (1.0 = original)
-    tta_min_votes: int = 3  # Minimum augmentations that must predict a note
+    tta_min_votes: int = 2  # Minimum augmentations that must predict a note (reduced from 3)
     tta_onset_tolerance_ms: int = 50  # Time window for matching notes across augmentations
 
     # Phase 1.3: BiLSTM Refinement
-    enable_bilstm_refinement: bool = False  # Enable after training model
+    enable_bilstm_refinement: bool = True  # BiLSTM trained - ready for evaluation
     bilstm_checkpoint_path: Path = Path("backend/refinement/checkpoints/bilstm_best.pt")
     bilstm_fps: int = 100  # Frames per second for piano roll conversion
     bilstm_threshold: float = 0.5  # Onset probability threshold

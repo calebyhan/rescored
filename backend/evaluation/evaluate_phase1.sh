@@ -82,11 +82,14 @@ echo ""
 EVAL_MODE="test"  # Change to "quick" for testing
 
 # Models to evaluate (choose):
-# - baseline: No confidence filtering, no TTA
+# - baseline: No confidence filtering, no TTA, no BiLSTM
 # - phase1.1: With confidence filtering
 # - phase1.2: With confidence filtering + TTA (very slow!)
-# - all: All three models
-MODELS="baseline phase1.1"  # Exclude phase1.2 (TTA) by default due to time
+# - phase1.3: With confidence filtering + BiLSTM refinement
+# - phase1.3b: BiLSTM only (no ensemble, no confidence - YourMT3+ → BiLSTM)
+# - phase1.4: With confidence filtering + TTA + BiLSTM (full pipeline, very slow!)
+# - all: All models
+MODELS="baseline phase1.1 phase1.3 phase1.3b"  # Test ensemble+BiLSTM vs YourMT3+BiLSTM
 
 # Maximum items (only used if EVAL_MODE=quick)
 MAX_ITEMS=10

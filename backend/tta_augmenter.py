@@ -41,8 +41,8 @@ class TTAugmenter:
         augmentations: List[str] = ['pitch_shift', 'time_stretch'],
         pitch_shifts: List[int] = [-1, 0, +1],
         time_stretches: List[float] = [0.95, 1.0, 1.05],
-        min_votes: int = 3,
-        onset_tolerance_ms: int = 50
+        min_votes: int = 2,  # Reduced from 3 - require 2/5 augmentations to agree
+        onset_tolerance_ms: int = 100  # Increased for augmentation alignment
     ):
         """
         Initialize TTA augmenter.
