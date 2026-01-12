@@ -60,6 +60,11 @@ class MAESTROPianoRollDataset(Dataset):
             start_idx = np.random.randint(0, len(ensemble_roll) - self.max_length)
             ensemble_roll = ensemble_roll[start_idx:start_idx + self.max_length]
             gt_roll = gt_roll[start_idx:start_idx + self.max_length]
+        elif len(ensemble_roll) < self.max_length:
+            # Pad if too short (zero-padding at the end)
+            pad_length = self.max_length - len(ensemble_roll)
+            ensemble_roll = np.pad(ensemble_roll, ((0, pad_length), (0, 0)), mode='constant', constant_values=0)
+            gt_roll = np.pad(gt_roll, ((0, pad_length), (0, 0)), mode='constant', constant_values=0)
 
         return {
             'input': torch.from_numpy(ensemble_roll).float(),
@@ -171,7 +176,7 @@ def train_bilstm(
         hidden_dim=256,
         num_layers=2,
         dropout=0.2,
-        use_attention=True
+        use_attention=False  # Disabled to avoid OOM on shared GPUs
     ).to(device)
 
     # Optimizer and scheduler
