@@ -622,7 +622,7 @@ class TranscriptionPipeline:
                     print(f"\n   Applying BiLSTM refinement...")
                     refiner = BiLSTMRefinementPipeline(
                         checkpoint_path=self.config.bilstm_checkpoint_path,
-                        device=self.device,
+                        device=self.config.yourmt3_device,
                         fps=self.config.bilstm_fps
                     )
 
