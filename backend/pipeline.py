@@ -602,7 +602,8 @@ class TranscriptionPipeline:
                 'pitch_shifts': self.config.tta_pitch_shifts,
                 'time_stretches': self.config.tta_time_stretches,
                 'min_votes': self.config.tta_min_votes,
-                'onset_tolerance_ms': self.config.tta_onset_tolerance_ms
+                'onset_tolerance_ms': self.config.tta_onset_tolerance_ms,
+                'confidence_threshold': self.config.ensemble_confidence_threshold  # Use ensemble threshold for consistency
             } if self.config.enable_tta else None
 
             midi_path = ensemble.transcribe(

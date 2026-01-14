@@ -42,7 +42,8 @@ class TTAugmenter:
         pitch_shifts: List[int] = [-1, 0, +1],
         time_stretches: List[float] = [0.95, 1.0, 1.05],
         min_votes: int = 2,  # Reduced from 3 - require 2/5 augmentations to agree
-        onset_tolerance_ms: int = 100  # Increased for augmentation alignment
+        onset_tolerance_ms: int = 100,  # Increased for augmentation alignment
+        confidence_threshold: float = 0.3  # Minimum total confidence to keep note
     ):
         """
         Initialize TTA augmenter.
@@ -51,14 +52,16 @@ class TTAugmenter:
             augmentations: List of augmentation types to apply
             pitch_shifts: Semitone shifts to apply (0 = original)
             time_stretches: Time stretch rates (1.0 = original)
-            min_votes: Minimum augmentations that must predict a note
+            min_votes: Minimum augmentations that must predict a note (DEPRECATED, use confidence_threshold)
             onset_tolerance_ms: Time window for matching notes (milliseconds)
+            confidence_threshold: Minimum total confidence sum to keep note
         """
         self.augmentations = augmentations
         self.pitch_shifts = pitch_shifts
         self.time_stretches = time_stretches
         self.min_votes = min_votes
         self.onset_tolerance = onset_tolerance_ms / 1000.0  # Convert to seconds
+        self.confidence_threshold = confidence_threshold
 
         # Build augmentation strategies
         self.strategies = self._build_augmentation_strategies()
@@ -154,12 +157,21 @@ class TTAugmenter:
             midi_path = transcriber.transcribe(aug_path)
             print(f"   ✓ Transcription complete: {midi_path.name}")
 
+            # Load confidence scores if available (saved as sidecar JSON by ensemble)
+            confidence_path = midi_path.parent / f"{midi_path.stem}_confidence.json"
+            note_confidences = None
+            if confidence_path.exists():
+                import json
+                with open(confidence_path, 'r') as f:
+                    note_confidences = json.load(f)
+
             # Store result with weight and strategy for timing adjustment
             aug_results.append({
                 'name': strategy.name,
                 'midi_path': midi_path,
                 'weight': strategy.weight,
-                'strategy': strategy  # Need this to reverse timing adjustments
+                'strategy': strategy,  # Need this to reverse timing adjustments
+                'note_confidences': note_confidences  # Preserve confidence scores from ensemble
             })
 
             # Clean up temp audio (keep MIDI for debugging)
@@ -205,7 +217,9 @@ class TTAugmenter:
         for result in aug_results:
             pm = pretty_midi.PrettyMIDI(str(result['midi_path']))
             strategy = result['strategy']
+            note_confidences = result.get('note_confidences', None)
 
+            note_idx = 0
             for instrument in pm.instruments:
                 if instrument.is_drum:
                     continue
@@ -230,13 +244,32 @@ class TTAugmenter:
                         shift_amount = int(shift_str)
                         adjusted_pitch = note.pitch - shift_amount
 
+                    # Get original confidence from ensemble (if available)
+                    # Otherwise default to 1.0 (full confidence)
+                    original_confidence = 1.0
+                    if note_confidences and note_idx < len(note_confidences):
+                        # Match by pitch and approximate onset
+                        onset_bucket = round(adjusted_onset * 100)  # 10ms buckets
+                        for conf_note in note_confidences:
+                            conf_onset_bucket = round(conf_note['onset'] * 100)
+                            if (conf_note['pitch'] == adjusted_pitch and
+                                abs(conf_onset_bucket - onset_bucket) <= 1):
+                                original_confidence = conf_note['confidence']
+                                break
+
+                    # Combined confidence = augmentation weight × original ensemble confidence
+                    # This preserves ByteDance's per-note confidence while weighting augmentations
+                    combined_confidence = result['weight'] * original_confidence
+
                     all_notes.append(Note(
                         pitch=adjusted_pitch,
                         onset=adjusted_onset,
                         offset=adjusted_offset,
                         velocity=note.velocity,
-                        confidence=result['weight']
+                        confidence=combined_confidence
                     ))
+
+                    note_idx += 1
 
         print(f"   Extracted {len(all_notes)} total notes from all augmentations")
 
@@ -254,43 +287,57 @@ class TTAugmenter:
 
         print(f"   Grouped into {len(note_groups)} unique note positions")
 
-        # Debug: check distribution of group sizes
+        # Debug: check distribution of group sizes and confidence
         group_sizes = [len(g) for g in note_groups.values()]
         size_counts = {}
         for s in group_sizes:
             size_counts[s] = size_counts.get(s, 0) + 1
         print(f"   Group size distribution: {dict(sorted(size_counts.items()))}")
-        print(f"   Onset tolerance: {self.onset_tolerance*1000:.0f}ms, min_votes: {self.min_votes}")
+        print(f"   Onset tolerance: {self.onset_tolerance*1000:.0f}ms")
+        print(f"   Confidence threshold: {self.confidence_threshold:.2f}")
 
-        # Weighted voting
+        # Confidence-based voting (replaces min_votes count-based approach)
         voted_notes = []
+        filtered_by_confidence = 0
+        filtered_by_votes = 0
+
         for (onset_bucket, pitch), group in note_groups.items():
-            # Count votes (weighted)
-            total_votes = sum(n.confidence for n in group)
+            # Sum confidence across all augmentations
+            total_confidence = sum(n.confidence for n in group)
             num_augmentations = len(group)
 
-            # Keep if meets minimum vote threshold
-            if num_augmentations >= self.min_votes:
-                # Weighted average of timing and velocity
-                weights_sum = sum(n.confidence for n in group)
+            # Keep if total confidence exceeds threshold
+            # This automatically gives more weight to notes that:
+            # 1. Appear in multiple augmentations (higher sum)
+            # 2. Have high ensemble confidence from ByteDance
+            # 3. Come from higher-weighted augmentations (original = 1.0)
+            if total_confidence >= self.confidence_threshold:
+                # Also check legacy min_votes for backward compatibility
+                if num_augmentations >= self.min_votes:
+                    # Weighted average of timing and velocity
+                    weights_sum = sum(n.confidence for n in group)
 
-                avg_onset = sum(n.onset * n.confidence for n in group) / weights_sum
-                avg_offset = sum(n.offset * n.confidence for n in group) / weights_sum
-                avg_velocity = int(sum(n.velocity * n.confidence for n in group) / weights_sum)
+                    avg_onset = sum(n.onset * n.confidence for n in group) / weights_sum
+                    avg_offset = sum(n.offset * n.confidence for n in group) / weights_sum
+                    avg_velocity = int(sum(n.velocity * n.confidence for n in group) / weights_sum)
 
-                voted_notes.append(Note(
-                    pitch=pitch,
-                    onset=avg_onset,
-                    offset=avg_offset,
-                    velocity=avg_velocity,
-                    confidence=total_votes
-                ))
+                    voted_notes.append(Note(
+                        pitch=pitch,
+                        onset=avg_onset,
+                        offset=avg_offset,
+                        velocity=avg_velocity,
+                        confidence=total_confidence
+                    ))
+                else:
+                    filtered_by_votes += 1
+            else:
+                filtered_by_confidence += 1
 
         # Sort by onset
         voted_notes.sort(key=lambda n: n.onset)
 
-        print(f"   ✓ Voting complete: {len(voted_notes)} notes kept (≥{self.min_votes} votes)")
-        print(f"   Filtered: {len(note_groups) - len(voted_notes)} low-confidence notes")
+        print(f"   ✓ Voting complete: {len(voted_notes)} notes kept")
+        print(f"   Filtered: {filtered_by_confidence} by confidence, {filtered_by_votes} by min_votes")
 
         # Save as MIDI
         output_path = output_dir / f"{original_audio.stem}_tta.mid"

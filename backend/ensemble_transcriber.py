@@ -105,8 +105,9 @@ class EnsembleTranscriber:
                 augmentations=tta_config.get('augmentations', ['pitch_shift', 'time_stretch']),
                 pitch_shifts=tta_config.get('pitch_shifts', [-1, 0, +1]),
                 time_stretches=tta_config.get('time_stretches', [0.95, 1.0, 1.05]),
-                min_votes=tta_config.get('min_votes', 2),  # Reduced from 3 - require 2 of 5 augmentations to agree
-                onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 100)  # Increased for augmentation alignment
+                min_votes=tta_config.get('min_votes', 2),  # Legacy parameter (deprecated, use confidence_threshold)
+                onset_tolerance_ms=tta_config.get('onset_tolerance_ms', 100),  # Increased for augmentation alignment
+                confidence_threshold=tta_config.get('confidence_threshold', 0.3)  # Minimum total confidence to keep note
             )
 
             # TTA will call self.transcribe() without use_tta for each augmentation
@@ -189,7 +190,13 @@ class EnsembleTranscriber:
         ensemble_midi_path = output_dir / f"{audio_path.stem}_ensemble.mid"
         self._notes_to_midi(ensemble_notes, ensemble_midi_path)
 
+        # Save confidence scores as sidecar JSON for TTA
+        # MIDI format doesn't support confidence metadata, so we save it separately
+        confidence_path = ensemble_midi_path.parent / f"{ensemble_midi_path.stem}_confidence.json"
+        self._save_confidence_scores(ensemble_notes, confidence_path)
+
         print(f"   ✓ Ensemble MIDI saved: {ensemble_midi_path.name}")
+        print(f"   ✓ Confidence scores saved: {confidence_path.name}")
         print(f"   ═══════════════════════════════\n")
 
         return ensemble_midi_path
@@ -569,6 +576,32 @@ class EnsembleTranscriber:
 
         # Save
         mid.save(output_path)
+
+    def _save_confidence_scores(self, notes: List[Note], output_path: Path):
+        """
+        Save confidence scores to JSON file for TTA aggregation.
+
+        MIDI format doesn't support confidence metadata, so we save it
+        as a sidecar JSON file that TTA can load.
+
+        Args:
+            notes: List of Note objects with confidence scores
+            output_path: Path for output JSON file
+        """
+        import json
+
+        confidence_data = []
+        for note in notes:
+            confidence_data.append({
+                'pitch': note.pitch,
+                'onset': note.onset,
+                'offset': note.offset,
+                'velocity': note.velocity,
+                'confidence': note.confidence
+            })
+
+        with open(output_path, 'w') as f:
+            json.dump(confidence_data, f, indent=2)
 
     def _validate_stem_quality(
         self,
