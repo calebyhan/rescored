@@ -85,11 +85,12 @@ EVAL_MODE="test"  # Change to "quick" for testing
 # - baseline: No confidence filtering, no TTA, no BiLSTM
 # - phase1.1: With confidence filtering
 # - phase1.2: With confidence filtering + TTA (very slow!)
-# - phase1.3: With confidence filtering + BiLSTM refinement
-# - phase1.3b: BiLSTM only (no ensemble, no confidence - YourMT3+ → BiLSTM)
+# - phase1.3: With confidence filtering + BiLSTM refinement (Ensemble + BiLSTM)
+# - phase1.3b: BiLSTM only (no ensemble - YourMT3+ → BiLSTM)
+# - phase1.3c: ByteDance + BiLSTM (no ensemble - ByteDance → BiLSTM)
 # - phase1.4: With confidence filtering + TTA + BiLSTM (full pipeline, very slow!)
 # - all: All models
-MODELS="baseline phase1.1 phase1.3 phase1.3b"  # Test ensemble+BiLSTM vs YourMT3+BiLSTM
+MODELS="baseline phase1.1 phase1.3 phase1.3b phase1.3c"  # Test all BiLSTM configurations
 
 # Maximum items (only used if EVAL_MODE=quick)
 MAX_ITEMS=10
