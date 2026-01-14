@@ -145,8 +145,8 @@ class BiLSTMRefinementPipeline:
         self.device = device
         self.fps = fps
 
-        # Load model
-        self.model = BiLSTMRefiner().to(device)
+        # Load model (use_attention=False to match training checkpoint)
+        self.model = BiLSTMRefiner(use_attention=False).to(device)
 
         if checkpoint_path.exists():
             print(f"   Loading BiLSTM checkpoint: {checkpoint_path.name}")
