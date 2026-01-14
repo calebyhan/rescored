@@ -369,7 +369,9 @@ class TranscriptionPipeline:
             print(f"   [Stem {stem_name}] Transcribing {stem_path.name}...")
 
             # Use appropriate transcription method
-            if stem_name == 'piano' and self.config.use_ensemble_transcription:
+            if stem_name == 'piano' and self.config.use_bytedance_only:
+                midi_path = self.transcribe_with_bytedance(stem_path)
+            elif stem_name == 'piano' and self.config.use_ensemble_transcription:
                 midi_path = self.transcribe_with_ensemble(stem_path)
             else:
                 midi_path = self.transcribe_with_yourmt3(stem_path)
@@ -419,8 +421,12 @@ class TranscriptionPipeline:
         """
         output_dir = self.temp_dir
 
-        # Transcribe with ensemble or single model
-        if self.config.use_ensemble_transcription:
+        # Transcribe with ensemble, ByteDance-only, or YourMT3+-only
+        if self.config.use_bytedance_only:
+            print(f"   Transcribing with ByteDance only (piano specialist)...")
+            midi_path = self.transcribe_with_bytedance(audio_path)
+            print(f"   ✓ ByteDance transcription complete")
+        elif self.config.use_ensemble_transcription:
             print(f"   Transcribing with ensemble (YourMT3+ + ByteDance)...")
             midi_path = self.transcribe_with_ensemble(audio_path)
             print(f"   ✓ Ensemble transcription complete")
@@ -544,6 +550,70 @@ class TranscriptionPipeline:
 
         except Exception as e:
             raise RuntimeError(f"YourMT3+ transcription failed: {e}")
+
+    def transcribe_with_bytedance(self, audio_path: Path) -> Path:
+        """
+        Transcribe audio to MIDI using ByteDance piano transcription model directly.
+
+        ByteDance is a piano-specialist model that achieves 94-95% accuracy on piano,
+        significantly better than YourMT3+ (80-85%) for piano-only audio.
+
+        Args:
+            audio_path: Path to audio file (should be piano stem)
+
+        Returns:
+            Path to generated MIDI file
+
+        Raises:
+            RuntimeError: If transcription fails
+        """
+        if not BYTEDANCE_AVAILABLE or ByteDanceTranscriber is None:
+            raise RuntimeError("bytedance_wrapper is not available")
+
+        print(f"   Transcribing with ByteDance (piano specialist, device: {self.config.yourmt3_device})...")
+
+        try:
+            # Initialize transcriber
+            transcriber = ByteDanceTranscriber(
+                device=self.config.yourmt3_device,
+                checkpoint=None  # Auto-download default model
+            )
+
+            # Transcribe audio
+            output_dir = self.temp_dir / "bytedance_output"
+            output_dir.mkdir(exist_ok=True)
+
+            midi_path = transcriber.transcribe(audio_path, output_dir)
+
+            print(f"   ✓ ByteDance transcription complete")
+
+            # Phase 1.3: BiLSTM Refinement (if enabled)
+            if self.config.enable_bilstm_refinement:
+                try:
+                    from backend.refinement.bilstm_refiner import BiLSTMRefinementPipeline
+
+                    print(f"\n   Applying BiLSTM refinement...")
+                    refiner = BiLSTMRefinementPipeline(
+                        checkpoint_path=self.config.bilstm_checkpoint_path,
+                        device=self.config.yourmt3_device,
+                        fps=self.config.bilstm_fps
+                    )
+
+                    midi_path = refiner.refine_midi(
+                        midi_path,
+                        output_dir=output_dir,
+                        threshold=self.config.bilstm_threshold
+                    )
+
+                    print(f"   ✓ BiLSTM refinement complete")
+                except Exception as bilstm_error:
+                    print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                    print(f"   Continuing with ByteDance output...")
+
+            return midi_path
+
+        except Exception as e:
+            raise RuntimeError(f"ByteDance transcription failed: {e}")
 
     def transcribe_with_ensemble(self, audio_path: Path) -> Path:
         """

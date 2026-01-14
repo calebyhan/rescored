@@ -114,7 +114,7 @@ def main():
         type=str,
         nargs='+',
         default=['baseline', 'phase1.1', 'phase1.3'],
-        choices=['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.4', 'all'],
+        choices=['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.3c', 'phase1.4', 'all'],
         help='Models to evaluate'
     )
 
@@ -140,7 +140,7 @@ def main():
     models = {}
 
     if 'all' in args.models:
-        args.models = ['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.4']
+        args.models = ['baseline', 'phase1.1', 'phase1.2', 'phase1.3', 'phase1.3b', 'phase1.3c', 'phase1.4']
 
     # Baseline: No confidence filtering, no TTA, no BiLSTM
     if 'baseline' in args.models:
@@ -187,6 +187,17 @@ def main():
         config_phase1_3b.enable_bilstm_refinement = True  # Enable Phase 1.3
 
         models['phase1.3b_bilstm_only'] = create_transcriber(config_phase1_3b, use_tta=False)
+
+    # Phase 1.3c: ByteDance + BiLSTM (no ensemble, ByteDance only with BiLSTM refinement)
+    if 'phase1.3c' in args.models:
+        config_phase1_3c = Settings()
+        config_phase1_3c.use_ensemble_transcription = False  # Disable ensemble (ByteDance only)
+        config_phase1_3c.use_bytedance_only = True  # Use ByteDance instead of YourMT3+
+        config_phase1_3c.use_bytedance_confidence = False  # Disable confidence filtering (not needed for single model)
+        config_phase1_3c.enable_tta = False  # Disable Phase 1.2
+        config_phase1_3c.enable_bilstm_refinement = True  # Enable Phase 1.3
+
+        models['phase1.3c_bytedance_bilstm'] = create_transcriber(config_phase1_3c, use_tta=False)
 
     # Phase 1.4: Confidence filtering + TTA + BiLSTM (full pipeline)
     if 'phase1.4' in args.models:

@@ -91,6 +91,7 @@ class Settings(BaseSettings):
 
     # Ensemble Transcription Configuration
     use_ensemble_transcription: bool = True  # Use ensemble of YourMT3+ and ByteDance for higher accuracy
+    use_bytedance_only: bool = False  # Use ByteDance only (no ensemble, no YourMT3+) - for Phase 1.3c evaluation
     use_yourmt3_ensemble: bool = True  # Include YourMT3+ in ensemble
     use_bytedance_ensemble: bool = True  # Include ByteDance piano transcription in ensemble
     ensemble_voting_strategy: str = "weighted"  # Voting strategy: weighted, intersection, union, majority

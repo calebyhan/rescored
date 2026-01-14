@@ -500,17 +500,85 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **VexFlow** - Music notation rendering in SVG/Canvas
 - **Tone.js** - Web audio synthesis and playback
 
+## Evaluation Results
+
+Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maestro) (177 piano recordings):
+
+### Baseline & Improvements
+
+| Configuration | F1 Score | Precision | Recall | Description |
+|--------------|----------|-----------|--------|-------------|
+| **Baseline** | **93.1%** | 89.7% | 96.8% | Ensemble only (YourMT3+ + ByteDance) |
+| **Phase 1.1 (Confidence)** | **93.6%** | 91.5% | 95.7% | + ByteDance confidence filtering |
+| **Phase 1.2 (TTA)** | **81.0%** | 70.9% | 94.8% | + Test-time augmentation (broken) |
+| **Phase 1.3 (BiLSTM)** | **96.1%** | 96.7% | 95.5% | + Confidence + BiLSTM refinement |
+| Phase 1.3b (BiLSTM only) | 96.0% | 95.4% | 96.6% | YourMT3+ → BiLSTM (no ensemble) |
+
+### Key Findings
+
+**✅ What Worked:**
+1. **BiLSTM refinement (+2.5% F1)**: Neural post-processor improves ensemble from 93.6% → 96.1% F1
+   - Phase 1.3 (Confidence + BiLSTM): **96.1% F1** (best configuration)
+   - Phase 1.3b (YourMT3+ → BiLSTM, no ensemble): **96.0% F1** (nearly as good!)
+   - BiLSTM successfully learns timing corrections and false positive filtering
+   - **Reliability issue**: 15% failure rate due to cuDNN non-contiguous tensor bug
+   - When BiLSTM fails, falls back to non-BiLSTM output (ensemble or YourMT3+)
+2. **Confidence filtering (+0.5% F1)**: Using ByteDance's frame-level confidence scores to filter low-confidence notes
+3. **Ensemble voting (93.1% → 93.6%)**: Combining YourMT3+ (generalist) + ByteDance (piano specialist) with asymmetric weights
+
+**❌ What Failed:**
+1. **Test-Time Augmentation (-12.6% F1)**: Pitch shift/time stretch augmentations produce misaligned predictions
+   - 67-72% of notes appear in only 1 of 5 augmentations
+   - Vote counting filtered out too many correct predictions
+   - Precision dropped dramatically (91.5% → 70.9%)
+   - **Root cause**: Augmentations change model behavior non-linearly, not just adding noise
+
+**🔧 TTA Fix Attempted:**
+- Replaced vote counting with confidence-based aggregation
+- Preserved ByteDance confidence scores through pipeline
+- First test file: 81.0% → 89.1% F1 (partial recovery)
+- Still uses pitch/time augmentations which have fundamental alignment issues
+
+### Recommendations
+
+**For Production (Current Best):**
+- Use **Phase 1.3 (Confidence + BiLSTM)**: **96.1% F1** (highest accuracy)
+  - Despite 15% BiLSTM failure rate, overall accuracy is excellent
+  - Fallback to confidence filtering on failures provides robustness
+- Alternative: **Phase 1.3b (BiLSTM only)**: **96.0% F1** (simpler pipeline)
+  - Skips ensemble voting, uses YourMT3+ → BiLSTM directly
+  - Faster inference (no ByteDance model loading)
+  - Falls back to YourMT3+ on BiLSTM failures
+- Disable TTA (too slow, unreliable, -12.6% F1)
+
+**Key Insight:**
+- BiLSTM post-processing was the breakthrough: +2.5% F1 improvement over confidence filtering
+- Surprisingly, BiLSTM-only (96.0%) nearly matches ensemble+BiLSTM (96.1%)
+- This suggests BiLSTM learned to correct YourMT3+ errors effectively
+
+**For Future Research:**
+- Fix cuDNN non-contiguous tensor bug in BiLSTM (could improve from 96.1% with 85% reliability)
+- Investigate why BiLSTM-only (96.0%) matches ensemble+BiLSTM (96.1%)
+- Replace TTA pitch/time augmentations with volume/noise augmentations
+- Try BiLSTM on ByteDance output (currently only applied to ensemble/YourMT3+)
+
 ## Roadmap
 
-### [x] Phase 1 (Completed)
-- Piano transcription with 90% accuracy (ensemble voting)
+### [x] Phase 1 (Evaluation Complete)
+- Piano transcription with **96.1% F1** (ensemble + confidence filtering + BiLSTM)
 - Two-stage source separation (BS-RoFormer + Demucs)
 - Audio preprocessing pipeline
-- Post-processing filters (confidence + key-aware)
+- Post-processing filters (confidence filtering + BiLSTM refinement)
 - Vocal transcription support (piano + vocals)
 - Basic editing capabilities
 - MusicXML export
 - Test suite (59 tests, 27% coverage)
+- **Benchmark evaluation** on MAESTRO dataset (177 examples)
+
+### Phase 1 (Next Steps)
+- [ ] Fix cuDNN non-contiguous tensor bug in BiLSTM (15% failure rate)
+- [ ] Remove TTA from production pipeline (proven ineffective)
+- [ ] Document BiLSTM reliability issue and fallback behavior
 
 ### Phase 2 (Future)
 - Multi-instrument transcription beyond piano+vocals

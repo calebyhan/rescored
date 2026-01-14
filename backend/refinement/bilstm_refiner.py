@@ -189,7 +189,8 @@ class BiLSTMRefinementPipeline:
 
         # Run BiLSTM refinement
         with torch.no_grad():
-            piano_roll_tensor = torch.from_numpy(piano_roll).float()
+            # Ensure tensor is contiguous to avoid cuDNN errors
+            piano_roll_tensor = torch.from_numpy(piano_roll).float().contiguous()
             piano_roll_tensor = piano_roll_tensor.unsqueeze(0).to(self.device)
 
             refined_tensor = self.model(piano_roll_tensor)

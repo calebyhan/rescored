@@ -298,8 +298,7 @@ class TTAugmenter:
 
         # Confidence-based voting (replaces min_votes count-based approach)
         voted_notes = []
-        filtered_by_confidence = 0
-        filtered_by_votes = 0
+        filtered_count = 0
 
         for (onset_bucket, pitch), group in note_groups.items():
             # Sum confidence across all augmentations
@@ -311,33 +310,34 @@ class TTAugmenter:
             # 1. Appear in multiple augmentations (higher sum)
             # 2. Have high ensemble confidence from ByteDance
             # 3. Come from higher-weighted augmentations (original = 1.0)
+            #
+            # Note: We use confidence_threshold ONLY (not min_votes)
+            # A high-confidence note from original (conf=0.9, weight=1.0) = 0.9 total
+            # This exceeds typical threshold (0.25-0.3), so it's kept even if other
+            # augmentations miss it. This is the correct behavior.
             if total_confidence >= self.confidence_threshold:
-                # Also check legacy min_votes for backward compatibility
-                if num_augmentations >= self.min_votes:
-                    # Weighted average of timing and velocity
-                    weights_sum = sum(n.confidence for n in group)
+                # Weighted average of timing and velocity
+                weights_sum = sum(n.confidence for n in group)
 
-                    avg_onset = sum(n.onset * n.confidence for n in group) / weights_sum
-                    avg_offset = sum(n.offset * n.confidence for n in group) / weights_sum
-                    avg_velocity = int(sum(n.velocity * n.confidence for n in group) / weights_sum)
+                avg_onset = sum(n.onset * n.confidence for n in group) / weights_sum
+                avg_offset = sum(n.offset * n.confidence for n in group) / weights_sum
+                avg_velocity = int(sum(n.velocity * n.confidence for n in group) / weights_sum)
 
-                    voted_notes.append(Note(
-                        pitch=pitch,
-                        onset=avg_onset,
-                        offset=avg_offset,
-                        velocity=avg_velocity,
-                        confidence=total_confidence
-                    ))
-                else:
-                    filtered_by_votes += 1
+                voted_notes.append(Note(
+                    pitch=pitch,
+                    onset=avg_onset,
+                    offset=avg_offset,
+                    velocity=avg_velocity,
+                    confidence=total_confidence
+                ))
             else:
-                filtered_by_confidence += 1
+                filtered_count += 1
 
         # Sort by onset
         voted_notes.sort(key=lambda n: n.onset)
 
-        print(f"   ✓ Voting complete: {len(voted_notes)} notes kept")
-        print(f"   Filtered: {filtered_by_confidence} by confidence, {filtered_by_votes} by min_votes")
+        print(f"   ✓ Voting complete: {len(voted_notes)} notes kept (confidence ≥ {self.confidence_threshold:.2f})")
+        print(f"   Filtered: {filtered_count} notes (total_confidence < {self.confidence_threshold:.2f})")
 
         # Save as MIDI
         output_path = output_dir / f"{original_audio.stem}_tta.mid"
