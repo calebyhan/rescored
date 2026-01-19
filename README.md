@@ -1,14 +1,3 @@
----
-title: Rescored
-emoji: 🎵
-colorFrom: purple
-colorTo: blue
-sdk: docker
-sdk_version: latest
-app_file: backend/app.py
-pinned: false
----
-
 # Rescored - AI Music Transcription
 
 Convert YouTube videos into editable sheet music using AI.
@@ -422,84 +411,6 @@ The interactive editor is designed to make fixing remaining errors easy regardle
 - BiLSTM refinement: ~100MB checkpoint, works on CPU/GPU/MPS
 - ByteDance ensemble: ~4GB VRAM (may fall back to YourMT3+ only on systems with limited GPU memory)
 
-## Development
-
-### Running Tests
-
-```bash
-# Backend tests (59 tests, ~5-10 seconds)
-cd backend
-source .venv/bin/activate
-pytest
-
-# Run with coverage report
-pytest --cov=. --cov-report=html
-
-# Run specific test file
-pytest tests/test_api.py -v
-
-# Frontend tests
-cd frontend
-npm test
-```
-
-See [docs/backend/testing.md](docs/backend/testing.md) for detailed testing guide.
-
-### API Documentation
-
-Once the backend is running, visit:
-- Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
-- ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-## Troubleshooting
-
-**Worker not processing jobs?**
-- Check Redis is running: `redis-cli ping` (should return PONG)
-- If Redis isn't running: `brew services start redis`
-- Check worker logs in Terminal 2
-
-**MPS/GPU not being used?**
-- Verify MPS is available: `python -c "import torch; print(torch.backends.mps.is_available())"`
-- Check `.env` has `YOURMT3_DEVICE=mps`
-- For NVIDIA GPU: Set `YOURMT3_DEVICE=cuda`
-
-**YourMT3+ fails to load?**
-- Ensure Python 3.10 is being used: `python --version`
-- Check symlink exists: `ls -la backend/ymt/yourmt3_core/amt/src/amt/logs`
-- Verify checkpoint file exists: `ls -lh backend/ymt/yourmt3_core/logs/2024/*/checkpoints/last.ckpt`
-
-**YouTube download fails?**
-- Ensure `storage/youtube_cookies.txt` exists and is recent
-- Export fresh cookies from a NEW incognito window
-- Video may be age-restricted or private
-- Update yt-dlp: `source .venv/bin/activate && pip install -U yt-dlp`
-
-**Module import errors?**
-- Make sure you're in the virtual environment: `source backend/.venv/bin/activate`
-- Reinstall requirements: `pip install -r requirements.txt`
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-### ML Models & Audio Processing
-- **YourMT3+** (KAIST) - Multi-instrument music transcription ([Paper](https://arxiv.org/abs/2407.04822))
-- **ByteDance Piano Transcription** - Piano-specific CNN+BiGRU model ([GitHub](https://github.com/bytedance/piano_transcription))
-- **BS-RoFormer** - Vocal removal for cleaner separation ([GitHub](https://github.com/ZFTurbo/Music-Source-Separation-Training))
-- **Demucs** (Meta AI Research) - 6-stem audio source separation ([Paper](https://arxiv.org/abs/2111.03600))
-- **audio-separator** - BS-RoFormer wrapper and audio processing utilities
-
-### Music Processing Libraries
-- **librosa** - Audio preprocessing and feature extraction
-- **madmom** - Beat tracking and tempo detection
-- **pretty_midi** - MIDI file manipulation
-
-### Frontend Libraries
-- **VexFlow** - Music notation rendering in SVG/Canvas
-- **Tone.js** - Web audio synthesis and playback
-
 ## Evaluation Results
 
 Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maestro) (177 piano recordings):
@@ -565,6 +476,62 @@ Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maes
 - Try training BiLSTM with more epochs (current: 50, suggested: 100)
 - Explore Phase 2 (D3RM diffusion refinement) for potential 97-99% F1
 
+## Development
+
+### Running Tests
+
+```bash
+# Backend tests (59 tests, ~5-10 seconds)
+cd backend
+source .venv/bin/activate
+pytest
+
+# Run with coverage report
+pytest --cov=. --cov-report=html
+
+# Run specific test file
+pytest tests/test_api.py -v
+
+# Frontend tests
+cd frontend
+npm test
+```
+
+See [docs/backend/testing.md](docs/backend/testing.md) for detailed testing guide.
+
+### API Documentation
+
+Once the backend is running, visit:
+- Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+- ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+## Troubleshooting
+
+**Worker not processing jobs?**
+- Check Redis is running: `redis-cli ping` (should return PONG)
+- If Redis isn't running: `brew services start redis`
+- Check worker logs in Terminal 2
+
+**MPS/GPU not being used?**
+- Verify MPS is available: `python -c "import torch; print(torch.backends.mps.is_available())"`
+- Check `.env` has `YOURMT3_DEVICE=mps`
+- For NVIDIA GPU: Set `YOURMT3_DEVICE=cuda`
+
+**YourMT3+ fails to load?**
+- Ensure Python 3.10 is being used: `python --version`
+- Check symlink exists: `ls -la backend/ymt/yourmt3_core/amt/src/amt/logs`
+- Verify checkpoint file exists: `ls -lh backend/ymt/yourmt3_core/logs/2024/*/checkpoints/last.ckpt`
+
+**YouTube download fails?**
+- Ensure `storage/youtube_cookies.txt` exists and is recent
+- Export fresh cookies from a NEW incognito window
+- Video may be age-restricted or private
+- Update yt-dlp: `source .venv/bin/activate && pip install -U yt-dlp`
+
+**Module import errors?**
+- Make sure you're in the virtual environment: `source backend/.venv/bin/activate`
+- Reinstall requirements: `pip install -r requirements.txt`
+
 ## Roadmap
 
 ### [x] Phase 1 (COMPLETE - Target: 92-94% F1, Achieved: 96.1% F1) ✅
@@ -603,6 +570,28 @@ Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maes
 - Mobile app (iOS/Android)
 - Real-time collaboration
 - API for third-party integrations
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+### ML Models & Audio Processing
+- **YourMT3+** (KAIST) - Multi-instrument music transcription ([Paper](https://arxiv.org/abs/2407.04822))
+- **ByteDance Piano Transcription** - Piano-specific CNN+BiGRU model ([GitHub](https://github.com/bytedance/piano_transcription))
+- **BS-RoFormer** - Vocal removal for cleaner separation ([GitHub](https://github.com/ZFTurbo/Music-Source-Separation-Training))
+- **Demucs** (Meta AI Research) - 6-stem audio source separation ([Paper](https://arxiv.org/abs/2111.03600))
+- **audio-separator** - BS-RoFormer wrapper and audio processing utilities
+
+### Music Processing Libraries
+- **librosa** - Audio preprocessing and feature extraction
+- **madmom** - Beat tracking and tempo detection
+- **pretty_midi** - MIDI file manipulation
+
+### Frontend Libraries
+- **VexFlow** - Music notation rendering in SVG/Canvas
+- **Tone.js** - Web audio synthesis and playback
 
 ---
 
