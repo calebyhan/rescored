@@ -71,6 +71,17 @@ except ImportError:
         EnsembleTranscriber = None
         print(f"WARNING: ensemble_transcriber not available: {e}")
 
+try:
+    from backend.refinement.bilstm_refiner import BiLSTMRefinementPipeline
+    BILSTM_AVAILABLE = True
+except ImportError:
+    try:
+        from refinement.bilstm_refiner import BiLSTMRefinementPipeline
+        BILSTM_AVAILABLE = True
+    except ImportError as e:
+        BILSTM_AVAILABLE = False
+        BiLSTMRefinementPipeline = None
+        print(f"WARNING: bilstm_refiner not available: {e}")
 
 
 class TranscriptionPipeline:
@@ -589,26 +600,28 @@ class TranscriptionPipeline:
 
             # Phase 1.3: BiLSTM Refinement (if enabled)
             if self.config.enable_bilstm_refinement:
-                try:
-                    from backend.refinement.bilstm_refiner import BiLSTMRefinementPipeline
-
-                    print(f"\n   Applying BiLSTM refinement...")
-                    refiner = BiLSTMRefinementPipeline(
-                        checkpoint_path=self.config.bilstm_checkpoint_path,
-                        device=self.config.yourmt3_device,
-                        fps=self.config.bilstm_fps
-                    )
-
-                    midi_path = refiner.refine_midi(
-                        midi_path,
-                        output_dir=output_dir,
-                        threshold=self.config.bilstm_threshold
-                    )
-
-                    print(f"   ✓ BiLSTM refinement complete")
-                except Exception as bilstm_error:
-                    print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                if not BILSTM_AVAILABLE or BiLSTMRefinementPipeline is None:
+                    print(f"   ⚠ BiLSTM refinement unavailable (module not loaded)")
                     print(f"   Continuing with ByteDance output...")
+                else:
+                    try:
+                        print(f"\n   Applying BiLSTM refinement...")
+                        refiner = BiLSTMRefinementPipeline(
+                            checkpoint_path=self.config.bilstm_checkpoint_path,
+                            device=self.config.yourmt3_device,
+                            fps=self.config.bilstm_fps
+                        )
+
+                        midi_path = refiner.refine_midi(
+                            midi_path,
+                            output_dir=output_dir,
+                            threshold=self.config.bilstm_threshold
+                        )
+
+                        print(f"   ✓ BiLSTM refinement complete")
+                    except Exception as bilstm_error:
+                        print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                        print(f"   Continuing with ByteDance output...")
 
             return midi_path
 
@@ -687,26 +700,28 @@ class TranscriptionPipeline:
 
             # Phase 1.3: BiLSTM Refinement (if enabled)
             if self.config.enable_bilstm_refinement:
-                try:
-                    from backend.refinement.bilstm_refiner import BiLSTMRefinementPipeline
-
-                    print(f"\n   Applying BiLSTM refinement...")
-                    refiner = BiLSTMRefinementPipeline(
-                        checkpoint_path=self.config.bilstm_checkpoint_path,
-                        device=self.config.yourmt3_device,
-                        fps=self.config.bilstm_fps
-                    )
-
-                    midi_path = refiner.refine_midi(
-                        midi_path,
-                        output_dir=output_dir,
-                        threshold=self.config.bilstm_threshold
-                    )
-
-                    print(f"   ✓ BiLSTM refinement complete")
-                except Exception as bilstm_error:
-                    print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                if not BILSTM_AVAILABLE or BiLSTMRefinementPipeline is None:
+                    print(f"   ⚠ BiLSTM refinement unavailable (module not loaded)")
                     print(f"   Continuing with ensemble output...")
+                else:
+                    try:
+                        print(f"\n   Applying BiLSTM refinement...")
+                        refiner = BiLSTMRefinementPipeline(
+                            checkpoint_path=self.config.bilstm_checkpoint_path,
+                            device=self.config.yourmt3_device,
+                            fps=self.config.bilstm_fps
+                        )
+
+                        midi_path = refiner.refine_midi(
+                            midi_path,
+                            output_dir=output_dir,
+                            threshold=self.config.bilstm_threshold
+                        )
+
+                        print(f"   ✓ BiLSTM refinement complete")
+                    except Exception as bilstm_error:
+                        print(f"   ⚠ BiLSTM refinement failed: {bilstm_error}")
+                        print(f"   Continuing with ensemble output...")
 
             return midi_path
 

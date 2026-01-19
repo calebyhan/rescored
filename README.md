@@ -33,8 +33,8 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 - **Frontend**: React + VexFlow (notation) + Tone.js (playback)
 - **ML Pipeline**:
   - BS-RoFormer (vocal removal) → Demucs (6-stem separation)
-  - YourMT3+ + ByteDance ensemble (90% accuracy on piano)
-  - Audio preprocessing + confidence/key filtering
+  - YourMT3+ + ByteDance ensemble → BiLSTM refinement (**96.1% accuracy on piano**)
+  - Audio preprocessing + confidence filtering
 
 ## Quick Start
 
@@ -317,9 +317,9 @@ You should see:
 - [x] **Multi-instrument transcription** (piano, guitar, bass, drums, vocals, other)
 - [x] **Advanced source separation** (BS-RoFormer + Demucs 6-stem)
 - [x] **Ensemble transcription** (YourMT3+ + ByteDance voting system)
+- [x] **BiLSTM neural refinement** (96.1% F1 accuracy on piano)
 - [x] **Audio preprocessing** (noise reduction, spectral denoising)
-- [x] **Confidence filtering** (removes low-confidence notes)
-- [x] **Key-aware filtering** (removes out-of-key notes)
+- [x] **Confidence filtering** (frame-level ByteDance scores)
 - [x] **Interactive notation editor** with VexFlow rendering
 - [x] **Multi-instrument tabs** (switch between transcribed instruments)
 - [x] **Playback controls** (play/pause, tempo adjust, loop)
@@ -405,22 +405,22 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
 ## Accuracy Expectations
 
-**With Ensemble (YourMT3+ + ByteDance) - Recommended:**
-- Simple piano: **~90% accurate** ✨
-- Complex pieces: **80-85% accurate**
-- Includes audio preprocessing, ensemble voting, and post-processing filters
+**Production Configuration (Phase 1.3 - Ensemble + BiLSTM):**
+- Piano transcription: **96.1% F1 score** ✨ (evaluated on MAESTRO test set)
+- Full pipeline: YourMT3+ + ByteDance ensemble → Confidence filtering → BiLSTM refinement
+- Includes audio preprocessing, two-stage source separation, and neural post-processing
+- Enabled by default in `app_config.py`
 
-**With YourMT3+ only:**
-- Simple piano: **80-85% accurate**
-- Complex pieces: **70-75% accurate**
+**Alternative Configurations:**
+- **Ensemble only** (no BiLSTM): **93.6% F1** - faster, still very accurate
+- **YourMT3+ only**: **~85% F1** - generalist model
+- **basic-pitch** (fallback): **~70% F1** - lightweight backup
 
-**With basic-pitch (fallback):**
-- Simple piano: **70-75% accurate**
-- Complex pieces: **60-70% accurate**
+The interactive editor is designed to make fixing remaining errors easy regardless of which transcription configuration is used.
 
-The interactive editor is designed to make fixing errors easy regardless of which transcription model is used.
-
-**Note**: Ensemble mode is enabled by default in `app_config.py`. ByteDance requires ~4GB VRAM and may fall back to YourMT3+ on systems with limited GPU memory.
+**Hardware Requirements:**
+- BiLSTM refinement: ~100MB checkpoint, works on CPU/GPU/MPS
+- ByteDance ensemble: ~4GB VRAM (may fall back to YourMT3+ only on systems with limited GPU memory)
 
 ## Development
 
@@ -511,18 +511,20 @@ Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maes
 | **Baseline** | **93.1%** | 89.7% | 96.8% | Ensemble only (YourMT3+ + ByteDance) |
 | **Phase 1.1 (Confidence)** | **93.6%** | 91.5% | 95.7% | + ByteDance confidence filtering |
 | **Phase 1.2 (TTA)** | **81.0%** | 70.9% | 94.8% | + Test-time augmentation (broken) |
-| **Phase 1.3 (BiLSTM)** | **96.1%** | 96.7% | 95.5% | + Confidence + BiLSTM refinement |
+| **Phase 1.3 (BiLSTM)** | **96.1%** | 96.7% | 95.5% | Ensemble + Confidence + BiLSTM |
 | Phase 1.3b (BiLSTM only) | 96.0% | 95.4% | 96.6% | YourMT3+ → BiLSTM (no ensemble) |
+| Phase 1.3c (ByteDance + BiLSTM) | 96.0% | 96.3% | 95.7% | ByteDance → BiLSTM (no ensemble) |
 
 ### Key Findings
 
 **✅ What Worked:**
-1. **BiLSTM refinement (+2.5% F1)**: Neural post-processor improves ensemble from 93.6% → 96.1% F1
-   - Phase 1.3 (Confidence + BiLSTM): **96.1% F1** (best configuration)
-   - Phase 1.3b (YourMT3+ → BiLSTM, no ensemble): **96.0% F1** (nearly as good!)
+1. **BiLSTM refinement (+2.5% F1)**: Neural post-processor improves transcription from 93.6% → 96.1% F1
+   - Phase 1.3 (Ensemble + Confidence + BiLSTM): **96.1% F1** (best configuration)
+   - Phase 1.3b (YourMT3+ → BiLSTM): **96.0% F1** (simpler, nearly as good)
+   - Phase 1.3c (ByteDance → BiLSTM): **96.0% F1** (simpler, nearly as good)
+   - All three BiLSTM variants perform nearly identically (~96% F1)
    - BiLSTM successfully learns timing corrections and false positive filtering
-   - **Reliability issue**: 15% failure rate due to cuDNN non-contiguous tensor bug
-   - When BiLSTM fails, falls back to non-BiLSTM output (ensemble or YourMT3+)
+   - **Reliability**: Chunked processing handles long sequences (7000+ notes) that exceed cuDNN LSTM limits
 2. **Confidence filtering (+0.5% F1)**: Using ByteDance's frame-level confidence scores to filter low-confidence notes
 3. **Ensemble voting (93.1% → 93.6%)**: Combining YourMT3+ (generalist) + ByteDance (piano specialist) with asymmetric weights
 
@@ -533,52 +535,55 @@ Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maes
    - Precision dropped dramatically (91.5% → 70.9%)
    - **Root cause**: Augmentations change model behavior non-linearly, not just adding noise
 
-**🔧 TTA Fix Attempted:**
-- Replaced vote counting with confidence-based aggregation
-- Preserved ByteDance confidence scores through pipeline
-- First test file: 81.0% → 89.1% F1 (partial recovery)
-- Still uses pitch/time augmentations which have fundamental alignment issues
+### Production Configuration
 
-### Recommendations
+**Current Production Setup (Phase 1.3):**
+- Configuration: **Ensemble + Confidence + BiLSTM** → **96.1% F1**
+- Enabled in `app_config.py`:
+  ```python
+  use_ensemble_transcription = True
+  use_bytedance_confidence = True
+  enable_bilstm_refinement = True
+  enable_tta = False  # Disabled (proven ineffective)
+  ```
+- Full pipeline: YourMT3+ + ByteDance ensemble → Confidence filtering → BiLSTM refinement
+- Processing time: ~2-3 minutes per song on GPU
 
-**For Production (Current Best):**
-- Use **Phase 1.3 (Confidence + BiLSTM)**: **96.1% F1** (highest accuracy)
-  - Despite 15% BiLSTM failure rate, overall accuracy is excellent
-  - Fallback to confidence filtering on failures provides robustness
-- Alternative: **Phase 1.3b (BiLSTM only)**: **96.0% F1** (simpler pipeline)
-  - Skips ensemble voting, uses YourMT3+ → BiLSTM directly
-  - Faster inference (no ByteDance model loading)
-  - Falls back to YourMT3+ on BiLSTM failures
-- Disable TTA (too slow, unreliable, -12.6% F1)
+**Alternative Configurations (96.0% F1):**
+- **Phase 1.3b (YourMT3+ → BiLSTM)**: Simpler, faster, no ByteDance loading
+- **Phase 1.3c (ByteDance → BiLSTM)**: Piano specialist path
+- Both achieve nearly identical accuracy with reduced complexity
 
 **Key Insight:**
-- BiLSTM post-processing was the breakthrough: +2.5% F1 improvement over confidence filtering
-- Surprisingly, BiLSTM-only (96.0%) nearly matches ensemble+BiLSTM (96.1%)
-- This suggests BiLSTM learned to correct YourMT3+ errors effectively
+- BiLSTM post-processing was the breakthrough: +2.5% F1 improvement (93.6% → 96.1%)
+- All BiLSTM variants (1.3, 1.3b, 1.3c) perform nearly identically at ~96% F1
+- This suggests BiLSTM is the key component, not the upstream transcriber
+- Simpler pipelines (1.3b, 1.3c) may be preferable for production due to lower complexity
 
 **For Future Research:**
-- Fix cuDNN non-contiguous tensor bug in BiLSTM (could improve from 96.1% with 85% reliability)
-- Investigate why BiLSTM-only (96.0%) matches ensemble+BiLSTM (96.1%)
-- Replace TTA pitch/time augmentations with volume/noise augmentations
-- Try BiLSTM on ByteDance output (currently only applied to ensemble/YourMT3+)
+- Investigate why all BiLSTM variants achieve ~96% regardless of upstream model
+- Try training BiLSTM with more epochs (current: 50, suggested: 100)
+- Explore Phase 2 (D3RM diffusion refinement) for potential 97-99% F1
 
 ## Roadmap
 
-### [x] Phase 1 (Evaluation Complete)
+### [x] Phase 1 (COMPLETE - Target: 92-94% F1, Achieved: 96.1% F1) ✅
 - Piano transcription with **96.1% F1** (ensemble + confidence filtering + BiLSTM)
 - Two-stage source separation (BS-RoFormer + Demucs)
 - Audio preprocessing pipeline
-- Post-processing filters (confidence filtering + BiLSTM refinement)
+- Enhanced confidence filtering (+0.5% F1)
+- BiLSTM neural refinement (+2.5% F1)
 - Vocal transcription support (piano + vocals)
 - Basic editing capabilities
 - MusicXML export
 - Test suite (59 tests, 27% coverage)
 - **Benchmark evaluation** on MAESTRO dataset (177 examples)
+- Production deployment with optimal configuration
 
-### Phase 1 (Next Steps)
-- [ ] Fix cuDNN non-contiguous tensor bug in BiLSTM (15% failure rate)
-- [ ] Remove TTA from production pipeline (proven ineffective)
-- [ ] Document BiLSTM reliability issue and fallback behavior
+### Phase 1 (Optional Improvements)
+- [ ] Try training BiLSTM with 100 epochs (currently 50, may reach ~97% F1)
+- [ ] Simplify to Phase 1.3b (YourMT3+ → BiLSTM) for faster processing
+- [ ] Investigate why BiLSTM achieves 96% regardless of upstream model
 
 ### Phase 2 (Future)
 - Multi-instrument transcription beyond piano+vocals

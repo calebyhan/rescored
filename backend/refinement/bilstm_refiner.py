@@ -188,13 +188,47 @@ class BiLSTMRefinementPipeline:
         piano_roll = self._midi_to_piano_roll(midi_path)
 
         # Run BiLSTM refinement
-        with torch.no_grad():
-            # Ensure tensor is contiguous to avoid cuDNN errors
-            piano_roll_tensor = torch.from_numpy(piano_roll).float().contiguous()
-            piano_roll_tensor = piano_roll_tensor.unsqueeze(0).to(self.device)
+        # For long sequences, process in chunks to avoid cuDNN memory issues
+        max_chunk_length = 30000  # ~5 minutes at 100 FPS, safe for GPU memory
+        overlap = 1000  # Overlap between chunks for smooth transitions
 
-            refined_tensor = self.model(piano_roll_tensor)
-            refined_roll = refined_tensor.squeeze(0).cpu().numpy()
+        with torch.no_grad():
+            if len(piano_roll) <= max_chunk_length:
+                # Short sequence - process directly
+                piano_roll_tensor = torch.from_numpy(piano_roll).float().contiguous()
+                piano_roll_tensor = piano_roll_tensor.unsqueeze(0).to(self.device)
+                refined_tensor = self.model(piano_roll_tensor)
+                refined_roll = refined_tensor.squeeze(0).cpu().numpy()
+            else:
+                # Long sequence - process in overlapping chunks
+                refined_roll = np.zeros_like(piano_roll)
+                weights = np.zeros(len(piano_roll))  # For blending overlapping regions
+
+                for start in range(0, len(piano_roll), max_chunk_length - overlap):
+                    end = min(start + max_chunk_length, len(piano_roll))
+                    chunk = piano_roll[start:end]
+
+                    chunk_tensor = torch.from_numpy(chunk).float().contiguous()
+                    chunk_tensor = chunk_tensor.unsqueeze(0).to(self.device)
+                    refined_chunk = self.model(chunk_tensor).squeeze(0).cpu().numpy()
+
+                    # Blend overlapping regions using linear ramp
+                    chunk_weights = np.ones(len(refined_chunk))
+                    if start > 0:
+                        # Ramp up at the beginning of non-first chunks
+                        ramp_length = min(overlap, len(refined_chunk))
+                        chunk_weights[:ramp_length] = np.linspace(0, 1, ramp_length)
+                    if end < len(piano_roll):
+                        # Ramp down at the end of non-last chunks
+                        ramp_length = min(overlap, len(refined_chunk))
+                        chunk_weights[-ramp_length:] = np.linspace(1, 0, ramp_length)
+
+                    refined_roll[start:end] += refined_chunk * chunk_weights[:, np.newaxis]
+                    weights[start:end] += chunk_weights
+
+                # Normalize by weights
+                weights = np.maximum(weights, 1e-8)  # Avoid division by zero
+                refined_roll = refined_roll / weights[:, np.newaxis]
 
         # Convert back to MIDI
         refined_path = output_dir / f"{midi_path.stem}_bilstm.mid"

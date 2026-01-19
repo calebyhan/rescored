@@ -119,7 +119,7 @@ class Settings(BaseSettings):
 
     # Phase 1.3: BiLSTM Refinement
     enable_bilstm_refinement: bool = True  # BiLSTM trained - ready for evaluation
-    bilstm_checkpoint_path: Path = Path("backend/refinement/checkpoints/bilstm_best.pt")
+    bilstm_checkpoint_path: Path = Path("refinement/checkpoints/bilstm_best.pt")
     bilstm_fps: int = 100  # Frames per second for piano roll conversion
     bilstm_threshold: float = 0.5  # Onset probability threshold
 
