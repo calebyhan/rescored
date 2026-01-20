@@ -40,7 +40,7 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/rescored.git
+git clone https://github.com/calebyhan/rescored.git
 cd rescored
 
 # Pull large files with Git LFS (required for YourMT3+ model checkpoint)
@@ -295,8 +295,8 @@ You should see:
 2. Open [http://localhost:5173](http://localhost:5173)
 3. Paste a YouTube URL (piano music recommended for best results)
 4. Wait for transcription:
-   - **With MPS/GPU**: ~1-2 minutes
-   - **With CPU**: ~10-15 minutes
+   - **With MPS/GPU**: ~5-15 minutes
+   - **With CPU**: ~20-30 minutes
 5. Edit the notation in the interactive editor
 6. Export as MIDI
 
@@ -320,45 +320,44 @@ You should see:
 - [ ] Advanced editing (copy/paste, drag-to-reposition, undo/redo)
 - [ ] PDF export
 - [ ] Articulations and dynamics notation
-- [ ] User accounts and cloud storage
 
 ## Project Structure
 
 ```
 rescored/
 ├── backend/                      # Python/FastAPI backend
-│   ├── main.py                  # REST API + WebSocket server
-│   ├── tasks.py                 # Celery background workers
-│   ├── pipeline.py              # Audio processing pipeline
-│   ├── app_config.py            # Configuration settings
-│   ├── app_utils.py             # Utility functions
-│   ├── audio_preprocessor.py   # Audio enhancement pipeline
-│   ├── ensemble_transcriber.py # Multi-model voting system
-│   ├── confidence_filter.py    # Post-processing filters
-│   ├── key_filter.py            # Music theory filters
-│   ├── requirements.txt         # Python dependencies (including tests)
-│   ├── tests/                   # Test suite (59 tests, 27% coverage)
-│   │   ├── test_api.py         # API endpoint tests
-│   │   ├── test_pipeline.py    # Pipeline component tests
-│   │   ├── test_tasks.py       # Celery task tests
-│   │   └── test_utils.py       # Utility function tests
-│   └── ymt/                     # YourMT3+ model and wrappers
-├── frontend/                    # React frontend
+│   ├── main.py                   # REST API + WebSocket server
+│   ├── tasks.py                  # Celery background workers
+│   ├── pipeline.py               # Audio processing pipeline
+│   ├── app_config.py             # Configuration settings
+│   ├── app_utils.py              # Utility functions
+│   ├── audio_preprocessor.py     # Audio enhancement pipeline
+│   ├── ensemble_transcriber.py   # Multi-model voting system
+│   ├── confidence_filter.py      # Post-processing filters
+│   ├── key_filter.py             # Music theory filters
+│   ├── requirements.txt          # Python dependencies (including tests)
+│   ├── tests/                    # Test suite (59 tests, 27% coverage)
+│   │   ├── test_api.py           # API endpoint tests
+│   │   ├── test_pipeline.py      # Pipeline component tests
+│   │   ├── test_tasks.py         # Celery task tests
+│   │   └── test_utils.py         # Utility function tests
+│   └── ymt/                      # YourMT3+ model and wrappers
+├── frontend/                     # React frontend
 │   ├── src/
-│   │   ├── components/         # UI components
-│   │   ├── store/              # Zustand state management
-│   │   └── api/                # API client
-│   └── package.json            # Node dependencies
-├── docs/                        # Comprehensive documentation
-│   ├── backend/                # Backend implementation guides
-│   ├── frontend/               # Frontend implementation guides
-│   ├── architecture/           # System design documents
-│   └── research/               # ML model comparisons
-├── logs/                        # Runtime logs (created by start.sh)
-├── storage/                     # YouTube cookies and temp files
-├── start.sh                     # Start all services
-├── stop.sh                      # Stop all services
-└── docker-compose.yml           # Docker setup (optional)
+│   │   ├── components/           # UI components
+│   │   ├── store/                # Zustand state management
+│   │   └── api/                  # API client
+│   └── package.json              # Node dependencies
+├── docs/                         # Comprehensive documentation
+│   ├── backend/                  # Backend implementation guides
+│   ├── frontend/                 # Frontend implementation guides
+│   ├── architecture/             # System design documents
+│   └── research/                 # ML model comparisons
+├── logs/                         # Runtime logs (created by start.sh)
+├── storage/                      # YouTube cookies and temp files
+├── start.sh                      # Start all services
+├── stop.sh                       # Stop all services
+└── docker-compose.yml            # Docker setup (optional)
 ```
 
 ## Documentation
@@ -372,30 +371,10 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 - [MVP Scope](docs/features/mvp.md)
 - [Known Challenges](docs/research/challenges.md)
 
-## Performance
-
-**With Apple Silicon MPS (M1/M2/M3/M4)**:
-- Download: ~10 seconds
-- Source separation (Demucs): ~30-60 seconds
-- Transcription (YourMT3+): ~20-30 seconds
-- **Total: ~1-2 minutes**
-
-**With NVIDIA GPU (RTX 3080)**:
-- Download: ~10 seconds
-- Source separation: ~45 seconds
-- Transcription: ~5 seconds
-- **Total: ~1-2 minutes**
-
-**With CPU**:
-- Download: ~10 seconds
-- Source separation: ~8-10 minutes
-- Transcription: ~30 seconds
-- **Total: ~10-15 minutes**
-
 ## Accuracy Expectations
 
 **Production Configuration (Phase 1.3 - Ensemble + BiLSTM):**
-- Piano transcription: **96.1% F1 score** ✨ (evaluated on MAESTRO test set)
+- Piano transcription: **96.1% F1 score** (evaluated on MAESTRO test set)
 - Full pipeline: YourMT3+ + ByteDance ensemble → Confidence filtering → BiLSTM refinement
 - Includes audio preprocessing, two-stage source separation, and neural post-processing
 - Enabled by default in `app_config.py`

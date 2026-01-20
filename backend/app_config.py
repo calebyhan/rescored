@@ -104,6 +104,24 @@ class Settings(BaseSettings):
     bytedance_note_ratio_threshold: float = 0.2  # Minimum ByteDance/YourMT3+ note ratio (warn if catastrophic failure)
     enable_stem_quality_validation: bool = True  # Validate piano stem quality before ByteDance (RMS energy, spectral centroid)
 
+    # Playable Piano Mode Configuration
+    # Skips Demucs piano isolation (which causes dropouts) and uses full instrumental with aggressive filtering
+    # Tradeoff: ~5-10% lower accuracy for 0% dropouts and 50% faster processing
+    enable_playable_mode: bool = True  # Skip Demucs, use MelBand vocal removal only + playability filters
+    playable_mode_vocal_model: str = "mel_band_roformer_instrumental_bleedless_v3_gabox.ckpt"
+
+    # Playability Filter Settings (only active when enable_playable_mode=True)
+    playable_max_polyphony: int = 8  # Maximum simultaneous notes (human hands can play ~10)
+    playable_melody_priority: bool = True  # Keep highest notes (melody) when reducing polyphony
+    playable_bass_priority: bool = True  # Keep lowest notes (bass) when reducing polyphony
+    playable_max_duration_high_register: float = 2.0  # Max duration (seconds) for notes above C5 (MIDI 72)
+    playable_max_duration_mid_register: float = 3.5  # Max duration for notes C3-C5 (MIDI 48-72)
+    playable_max_duration_low_register: float = 5.0  # Max duration for notes below C3 (MIDI 48)
+    playable_repeated_note_threshold_ms: int = 150  # Filter same pitch within this window (guitar strums)
+    playable_confidence_threshold: float = 0.4  # Higher threshold for playable mode
+    playable_velocity_threshold: int = 25  # Higher velocity threshold to filter quiet artifacts
+    playable_min_note_duration: float = 0.08  # Longer minimum duration (80ms) to filter noise
+
     # Phase 1.1: Enhanced Confidence Filtering
     use_bytedance_confidence: bool = True  # Use ByteDance frame-level confidence scores (onset_roll/offset_roll)
     confidence_aggregation: str = "geometric_mean"  # How to combine onset and offset confidence
@@ -128,6 +146,15 @@ class Settings(BaseSettings):
     enable_audio_denoising: bool = True  # Remove background noise and artifacts
     enable_audio_normalization: bool = True  # Normalize volume to consistent level
     enable_highpass_filter: bool = True  # Remove low-frequency rumble (<30Hz)
+
+    # Dropout Mitigation Configuration (Tier 1: Improved Spectral Gating)
+    # These settings control the improved spectral gating algorithm to reduce audio dropouts
+    spectral_gate_adaptive_threshold: bool = True  # Use adaptive threshold (20th percentile vs median)
+    spectral_gate_percentile: int = 20  # Percentile for adaptive threshold (20 = preserve quiet passages)
+    spectral_gate_temporal_smoothing: bool = True  # Apply temporal smoothing to prevent choppy transitions
+    spectral_gate_temporal_smoothing_frames: int = 5  # Window size for temporal smoothing (60-120ms)
+    spectral_gate_min_duration_enforcement: bool = True  # Fill short dropout regions
+    spectral_gate_min_duration_ms: float = 100.0  # Minimum segment duration (shorter gaps are filled)
 
     # Post-Processing Filters (Phase 4)
     enable_confidence_filtering: bool = False  # Filter low-confidence notes (reduces false positives)

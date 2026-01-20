@@ -273,14 +273,43 @@ class TranscriptionPipeline:
 
     def separate_sources(self, audio_path: Path) -> dict:
         """
-        Separate audio into 4 stems using Demucs.
+        Separate audio into stems.
+
+        For normal mode: Full separation using Demucs (piano, guitar, drums, bass, other)
+        For playable mode: Only removes vocals, keeps full instrumental for transcription
 
         Returns:
-            dict with keys: drums, bass, vocals, other
+            dict with stem names as keys and file paths as values
         """
         # Verify input audio exists
         if not audio_path.exists():
             raise FileNotFoundError(f"Input audio not found: {audio_path}")
+
+        # Playable mode: MelBand vocal removal only, skip Demucs piano isolation
+        # This eliminates dropout issues at the cost of ~5-10% accuracy
+        if self.config.enable_playable_mode:
+            print("   Using Playable Mode: MelBand vocal removal only (skipping Demucs)")
+
+            if not AUDIO_SEPARATOR_AVAILABLE or AudioSeparator is None:
+                raise RuntimeError("audio_separator_wrapper is not available")
+
+            separator = AudioSeparator()
+            vocal_dir = self.temp_dir / "separation" / "playable_vocals"
+
+            # Use MelBand Bleedless for cleaner vocal removal
+            stems = separator.separate_vocals(
+                audio_path,
+                vocal_dir,
+                model=self.config.playable_mode_vocal_model
+            )
+
+            # Return instrumental as 'piano' stem (it contains all instruments)
+            # The playability filters will handle the non-piano content post-transcription
+            print(f"   ✓ Full instrumental preserved (no piano isolation)")
+            return {
+                'vocals': stems.get('vocals'),
+                'piano': stems['instrumental'],  # Full instrumental, not isolated piano
+            }
 
         # Source separation - config-driven approach
         if self.config.use_two_stage_separation:
@@ -967,6 +996,7 @@ class TranscriptionPipeline:
         Apply post-processing filters to improve transcription quality.
 
         Applies confidence filtering and key-aware filtering based on config.
+        In playable mode, also applies playability filters (polyphony reduction, etc.)
 
         Args:
             midi_path: Input MIDI file
@@ -976,8 +1006,14 @@ class TranscriptionPipeline:
         """
         filtered_path = midi_path
 
-        # Apply confidence filtering
-        if self.config.enable_confidence_filtering:
+        # Playable mode: Apply playability filters first (before other filtering)
+        # These reduce polyphony, filter repeated notes, limit durations, etc.
+        if self.config.enable_playable_mode:
+            print(f"   Applying playability filters...")
+            filtered_path = self.apply_playability_filters(filtered_path)
+
+        # Apply confidence filtering (also enabled in playable mode with stricter thresholds)
+        if self.config.enable_confidence_filtering or self.config.enable_playable_mode:
             print(f"   Applying confidence filtering...")
 
             try:
@@ -990,10 +1026,20 @@ class TranscriptionPipeline:
                     sys.path.insert(0, str(backend_dir))
                 from confidence_filter import ConfidenceFilter
 
+            # Use stricter thresholds in playable mode
+            if self.config.enable_playable_mode:
+                conf_threshold = self.config.playable_confidence_threshold
+                vel_threshold = self.config.playable_velocity_threshold
+                dur_threshold = self.config.playable_min_note_duration
+            else:
+                conf_threshold = self.config.confidence_threshold
+                vel_threshold = self.config.velocity_threshold
+                dur_threshold = self.config.min_note_duration
+
             filter = ConfidenceFilter(
-                confidence_threshold=self.config.confidence_threshold,
-                velocity_threshold=self.config.velocity_threshold,
-                duration_threshold=self.config.min_note_duration
+                confidence_threshold=conf_threshold,
+                velocity_threshold=vel_threshold,
+                duration_threshold=dur_threshold
             )
 
             filtered_path = filter.filter_midi_by_confidence(
@@ -1046,6 +1092,43 @@ class TranscriptionPipeline:
         )
 
         return filtered_path
+
+    def apply_playability_filters(self, midi_path: Path) -> Path:
+        """
+        Apply playability-focused filters for playable piano mode.
+
+        Transforms full instrumental transcription into playable piano arrangement.
+        Applies: basic filtering, repeated note removal, duration limiting, polyphony reduction.
+
+        Args:
+            midi_path: Input MIDI file
+
+        Returns:
+            Path to filtered MIDI file
+        """
+        try:
+            from playability_filter import PlayabilityFilter
+        except ImportError:
+            import sys
+            from pathlib import Path as PathLib
+            backend_dir = PathLib(__file__).parent
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            from playability_filter import PlayabilityFilter
+
+        filter = PlayabilityFilter(
+            max_polyphony=self.config.playable_max_polyphony,
+            melody_priority=self.config.playable_melody_priority,
+            bass_priority=self.config.playable_bass_priority,
+            max_duration_high=self.config.playable_max_duration_high_register,
+            max_duration_mid=self.config.playable_max_duration_mid_register,
+            max_duration_low=self.config.playable_max_duration_low_register,
+            repeated_note_threshold_ms=self.config.playable_repeated_note_threshold_ms,
+            velocity_threshold=self.config.playable_velocity_threshold,
+            duration_threshold=self.config.playable_min_note_duration
+        )
+
+        return filter.filter_midi(midi_path)
 
     def _get_midi_range(self, midi_path: Path) -> int:
         """
