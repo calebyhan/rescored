@@ -295,8 +295,8 @@ You should see:
 2. Open [http://localhost:5173](http://localhost:5173)
 3. Paste a YouTube URL (piano music recommended for best results)
 4. Wait for transcription:
-   - **With MPS/GPU**: ~5-15 minutes
-   - **With CPU**: ~20-30 minutes
+   - **With MPS/GPU**: ~10-20 minutes
+   - **With CPU**: ~30-60 minutes
 5. Edit the notation in the interactive editor
 6. Export as MIDI
 

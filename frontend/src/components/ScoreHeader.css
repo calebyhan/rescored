@@ -1,90 +1,103 @@
+/* Contemporary Classical - Score Header */
 .score-header {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  border: 1px solid #d1d5db;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--color-white);
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-gray-light);
 }
 
 .header-top {
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-gray-light);
 }
 
 .score-title {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1f2937;
+  margin: 0 0 0.625rem 0;
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-black);
 }
 
 .score-composer {
   margin: 0;
-  font-size: 0.95rem;
-  color: #6b7280;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--color-gray-medium);
   font-style: italic;
 }
 
 .metadata-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
   flex-wrap: wrap;
 }
 
 .tempo-display {
   cursor: pointer;
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: #3a7ca5;
+  color: var(--color-black);
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  transition: background 0.2s;
+  border: 1px solid var(--color-gray-light);
+  transition: all 0.15s ease;
   user-select: none;
 }
 
 .tempo-display:hover {
-  background: #f3f4f6;
+  background: var(--color-background);
 }
 
 .tempo-input {
   width: 80px;
-  padding: 0.25rem 0.5rem;
+  padding: 0.5rem;
+  font-family: var(--font-mono);
   font-size: 1rem;
   font-weight: 600;
-  color: #3a7ca5;
-  border: 2px solid #3a7ca5;
-  border-radius: 4px;
+  color: var(--color-black);
+  border: 1px solid var(--color-black);
+  border-radius: 2px;
   outline: none;
   text-align: center;
 }
 
 .tempo-input:focus {
-  border-color: #2c5f7f;
-  box-shadow: 0 0 0 3px rgba(58, 124, 165, 0.1);
+  border-color: var(--color-accent);
 }
 
 .metadata-divider {
-  color: #d1d5db;
+  color: var(--color-gray-light);
   font-weight: 300;
 }
 
 .key-display,
 .time-display {
-  font-size: 0.95rem;
-  color: #4a5568;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--color-gray-dark);
 }
 
 .metadata-label {
+  font-family: var(--font-sans);
   font-weight: 500;
-  color: #6b7280;
+  font-size: 0.875rem;
+  color: var(--color-gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* Responsive */
 @media (max-width: 600px) {
+  .score-header {
+    padding: 1.5rem;
+  }
+
   .metadata-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
 
   .metadata-divider {
@@ -92,6 +105,6 @@
   }
 
   .score-title {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
   }
 }

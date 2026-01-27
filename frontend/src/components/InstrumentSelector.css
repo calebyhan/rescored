@@ -1,20 +1,24 @@
+/* Contemporary Classical - Instrument Selector */
 .instrument-selector {
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
 }
 
 .selector-label {
   display: block;
-  margin-bottom: 1rem;
-  font-weight: bold;
-  font-size: 1.1rem;
-  color: #333;
+  margin-bottom: 1.25rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--color-black);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 
 .instrument-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-  margin-bottom: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .instrument-button {
@@ -22,87 +26,87 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  background-color: #fff;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--color-gray-light);
+  background-color: var(--color-white);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   min-height: 100px;
 }
 
 .instrument-button:hover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-black);
+  background-color: var(--color-background);
 }
 
 .instrument-button.selected {
-  border-color: #007bff;
-  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-white);
 }
 
 .instrument-button.selected:hover {
-  background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+  background: var(--color-accent-dark);
+  border-color: var(--color-accent-dark);
 }
 
 .instrument-icon {
   font-size: 2rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.625rem;
   display: block;
 }
 
 .instrument-label {
-  font-size: 0.9rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
   font-weight: 500;
   text-align: center;
 }
 
 .selector-hint {
-  color: #888;
-  font-size: 0.85rem;
-  margin-top: 0.5rem;
+  color: var(--color-gray-medium);
+  font-size: 0.8125rem;
+  margin-top: 1rem;
   text-align: center;
   font-style: italic;
 }
 
+/* Vocal instrument selector */
 .vocal-instrument-selector {
   margin: 1.5rem 0;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
+  padding: 1.25rem;
+  background-color: var(--color-background);
+  border: 1px solid var(--color-gray-light);
 }
 
 .vocal-instrument-selector label {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.625rem;
+  font-family: var(--font-sans);
   font-weight: 500;
-  color: #495057;
+  font-size: 0.875rem;
+  color: var(--color-black);
 }
 
 .vocal-instrument-selector select {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--font-sans);
   font-size: 1rem;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  background-color: white;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 2px;
+  background-color: var(--color-white);
   cursor: pointer;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.15s ease;
 }
 
 .vocal-instrument-selector select:hover {
-  border-color: #007bff;
+  border-color: var(--color-black);
 }
 
 .vocal-instrument-selector select:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  border-color: var(--color-black);
 }
 
 /* Responsive adjustments */

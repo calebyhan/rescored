@@ -1,11 +1,28 @@
+/* Contemporary Classical Design System */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* Typography */
+  --font-serif: 'Libre Baskerville', Georgia, serif;
+  --font-sans: 'Work Sans', -apple-system, system-ui, sans-serif;
+  --font-mono: 'Courier New', monospace;
 
-  color-scheme: light;
-  color: #1f2937;
-  background-color: #ffffff;
+  /* Colors */
+  --color-black: #000000;
+  --color-white: #FFFFFF;
+  --color-gray-dark: #333333;
+  --color-gray-medium: #666666;
+  --color-gray-light: #E0E0E0;
+  --color-background: #FAFAFA;
+  --color-accent: #8B1538;
+  --color-accent-dark: #6B0F2A;
+  --color-success: #1B5E20;
+  --color-error: #B71C1C;
+
+  /* Base styles */
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--color-black);
+  background-color: var(--color-white);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,13 +30,8 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -33,30 +45,101 @@ body {
   width: 100%;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-black);
+  margin: 0;
 }
 
+h1 {
+  font-size: 2.5rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 2rem;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.5rem;
+}
+
+p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Links */
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent);
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: var(--color-accent-dark);
+  border-bottom-color: var(--color-accent-dark);
+}
+
+/* Buttons */
 button {
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
   font-weight: 500;
-  font-family: inherit;
-  background-color: white;
-  color: #1f2937;
+  padding: 0.625rem 1.5rem;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 2px;
+  background-color: var(--color-white);
+  color: var(--color-black);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
-button:hover {
-  background-color: #3a7ca5;
-  border-color: #3a7ca5;
-  color: white;
+
+button:hover:not(:disabled) {
+  border-color: var(--color-black);
+  background-color: var(--color-black);
+  color: var(--color-white);
 }
-button:focus,
+
 button:focus-visible {
-  outline: 2px solid #3a7ca5;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-white);
+}
+
+button.primary:hover:not(:disabled) {
+  background-color: var(--color-accent-dark);
+  border-color: var(--color-accent-dark);
+}
+
+/* Form elements */
+input, textarea, select {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 2px;
+  background-color: var(--color-white);
+  color: var(--color-black);
+  transition: border-color 0.15s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-black);
 }

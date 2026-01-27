@@ -1,43 +1,30 @@
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 .app {
   min-height: 100vh;
-  background: white;
-  color: #1f2937;
+  background: var(--color-white);
+  color: var(--color-black);
   position: relative;
 }
 
 /* Back button - fixed position top-left */
 .back-button {
   position: fixed;
-  top: 1rem;
-  left: 1rem;
+  top: 2rem;
+  left: 2rem;
   z-index: 1000;
-  padding: 0.5rem 1rem;
-  background: white;
-  color: #3a7ca5;
-  border: 2px solid #3a7ca5;
-  border-radius: 8px;
-  font-weight: 600;
+  padding: 0.625rem 1.25rem;
+  background: var(--color-white);
+  color: var(--color-black);
+  border: 1px solid var(--color-gray-light);
+  border-radius: 2px;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
 }
 
 .back-button:hover {
-  background: #3a7ca5;
-  color: white;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
+  background: var(--color-black);
+  color: var(--color-white);
+  border-color: var(--color-black);
 }
