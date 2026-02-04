@@ -170,39 +170,77 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       setLoading(true);
       setError(null);
 
+      console.log('[ScoreEditor] Starting to load score for job:', jobId);
+
       // Get job status to find which instruments were transcribed
       const jobStatus = await getJobStatus(jobId);
+      console.log('[ScoreEditor] Job status:', jobStatus);
 
       // Parse instruments from backend (graceful degradation if not available)
       // Backend will eventually return: jobStatus.instruments = ['piano', 'vocals', 'drums']
       const transcribedInstruments = (jobStatus as any).instruments || ['piano'];
+      console.log('[ScoreEditor] Transcribed instruments:', transcribedInstruments);
       setInstruments(transcribedInstruments);
 
       // Fetch metadata once (shared across all instruments)
       const metadata = await getMetadata(jobId);
+      console.log('[ScoreEditor] Metadata:', metadata);
 
       // Load MIDI files for each instrument
       for (const instrument of transcribedInstruments) {
-        // Per-instrument MIDI endpoint (backward compatible)
-        const midiData = await getMidiFile(jobId, instrument);
+        console.log(`[ScoreEditor] Loading MIDI for ${instrument}...`);
 
-        await loadFromMidi(instrument, midiData, {
-          tempo: metadata.tempo,
-          keySignature: metadata.key_signature,
-          timeSignature: metadata.time_signature,
-        });
+        try {
+          // Per-instrument MIDI endpoint (backward compatible)
+          const midiData = await getMidiFile(jobId, instrument);
+          console.log(`[ScoreEditor] Got MIDI data for ${instrument}, size:`, midiData.byteLength);
+
+          await loadFromMidi(instrument, midiData, {
+            tempo: metadata.tempo,
+            keySignature: metadata.key_signature,
+            timeSignature: metadata.time_signature,
+          });
+
+          console.log(`[ScoreEditor] Successfully loaded ${instrument}`);
+        } catch (err) {
+          console.error(`[ScoreEditor] Failed to load ${instrument}:`, err);
+          throw new Error(`Failed to load ${instrument}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
+      // Wait for store to fully update
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify all instruments were loaded successfully
+      const { scores, availableInstruments } = useNotationStore.getState();
+      console.log('[ScoreEditor] Loaded instruments:', availableInstruments);
+      console.log('[ScoreEditor] Available scores:', Array.from(scores.keys()));
+
+      // Validate that all instruments were loaded
+      if (availableInstruments.length === 0) {
+        throw new Error('No instruments were loaded successfully');
+      }
+
+      if (availableInstruments.length !== transcribedInstruments.length) {
+        console.warn('[ScoreEditor] Mismatch: expected', transcribedInstruments, 'but got', availableInstruments);
       }
 
       // Set "all" as active if multiple instruments, otherwise first instrument
-      if (transcribedInstruments.length > 1) {
+      if (transcribedInstruments.length > 1 && availableInstruments.length > 1) {
+        console.log('[ScoreEditor] Setting active instrument to "all"');
         setActiveInstrument('all');
-      } else if (transcribedInstruments.length > 0) {
-        setActiveInstrument(transcribedInstruments[0]);
+      } else if (availableInstruments.length > 0) {
+        const firstInstrument = availableInstruments[0];
+        console.log('[ScoreEditor] Setting active instrument to', firstInstrument);
+        setActiveInstrument(firstInstrument);
+      } else {
+        throw new Error('No instruments available to display');
       }
 
+      console.log('[ScoreEditor] Load complete!');
       setLoading(false);
     } catch (err) {
-      console.error('Failed to load score:', err);
+      console.error('[ScoreEditor] Failed to load score:', err);
       setError(err instanceof Error ? err.message : 'Failed to load score');
       setLoading(false);
     }
@@ -272,6 +310,19 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       <div className="score-editor error">
         <h2>Error Loading Score</h2>
         <p>{error}</p>
+        <button onClick={loadScore}>Retry</button>
+      </div>
+    );
+  }
+
+  // Defensive check: ensure we have a valid score
+  if (!score || !score.parts || score.parts.length === 0) {
+    console.error('[ScoreEditor] Invalid score state:', { score, activeInstrument, instruments });
+    return (
+      <div className="score-editor error">
+        <h2>Invalid Score</h2>
+        <p>The score could not be loaded properly. Active instrument: {activeInstrument}</p>
+        <p>Available instruments: {instruments.join(', ')}</p>
         <button onClick={loadScore}>Retry</button>
       </div>
     );

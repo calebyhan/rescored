@@ -126,12 +126,25 @@ const createCombinedScore = (scores: Map<string, Score>, instruments: string[]):
   // Collect all parts from all instruments
   for (const instrument of instruments) {
     const score = scores.get(instrument);
-    if (!score) continue;
+    if (!score) {
+      console.warn(`Score not found for instrument: ${instrument}`);
+      continue;
+    }
+
+    if (!score.parts || score.parts.length === 0) {
+      console.warn(`Instrument ${instrument} has no parts, skipping`);
+      continue;
+    }
 
     if (!firstScore) firstScore = score;
 
     // Add all parts from this instrument with updated names
     for (const part of score.parts) {
+      if (!part.measures || part.measures.length === 0) {
+        console.warn(`Part ${part.id} in ${instrument} has no measures, skipping`);
+        continue;
+      }
+
       allParts.push({
         ...part,
         id: `${instrument}-${part.id}`,
@@ -139,6 +152,8 @@ const createCombinedScore = (scores: Map<string, Score>, instruments: string[]):
       });
     }
   }
+
+  console.log(`Combined score created with ${allParts.length} parts from ${instruments.length} instruments`);
 
   // Use metadata from the first score
   return {
@@ -302,6 +317,20 @@ export const useNotationStore = create<NotationState>((set, get) => ({
     // Special case: "all" means show all instruments combined
     if (instrument === 'all' && state.availableInstruments.length > 0) {
       const combinedScore = createCombinedScore(state.scores, state.availableInstruments);
+
+      // Validate combined score has content
+      if (!combinedScore || combinedScore.parts.length === 0) {
+        console.warn('Combined score is empty, falling back to first instrument');
+        const firstInstrument = state.availableInstruments[0];
+        const fallbackScore = state.scores.get(firstInstrument);
+        set({
+          activeInstrument: firstInstrument,
+          score: fallbackScore || null,
+          selectedNoteIds: [],
+        });
+        return;
+      }
+
       set({
         activeInstrument: instrument,
         score: combinedScore,

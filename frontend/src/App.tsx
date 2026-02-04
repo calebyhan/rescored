@@ -25,6 +25,10 @@ function App() {
 
   const handleJobComplete = (jobId: string) => {
     setCurrentJobId(jobId);
+    // In dev mode, we need to switch to editor view
+    if (DEV_MODE) {
+      setDevView('editor');
+    }
   };
 
   const handleReset = () => {
