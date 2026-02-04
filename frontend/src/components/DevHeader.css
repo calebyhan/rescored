@@ -1,0 +1,82 @@
+/* Contemporary Classical - Dev Header (Temporary) */
+.dev-header {
+  position: relative;
+  background: var(--color-accent);
+  color: var(--color-white);
+  padding: 0.75rem 2rem;
+  border-bottom: 2px solid var(--color-accent-dark);
+}
+
+.dev-header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.dev-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.dev-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dev-nav button {
+  padding: 0.5rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-white);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dev-nav button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.dev-nav button.active {
+  background: var(--color-white);
+  color: var(--color-accent);
+  border-color: var(--color-white);
+}
+
+/* No additional spacing needed since header is not fixed */
+.app.with-dev-header {
+  /* padding removed - header is relative */
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .dev-header {
+    padding: 0.5rem 1rem;
+  }
+
+  .dev-header-content {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .dev-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dev-nav button {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}

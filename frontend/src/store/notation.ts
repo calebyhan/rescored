@@ -118,6 +118,75 @@ const cloneScoresMap = (scores: Map<string, Score>): Map<string, Score> => {
   return cloned;
 };
 
+// Helper function to create a combined score with all instruments
+const createCombinedScore = (scores: Map<string, Score>, instruments: string[]): Score => {
+  const allParts: Part[] = [];
+  let firstScore: Score | null = null;
+
+  // Collect all parts from all instruments
+  for (const instrument of instruments) {
+    const score = scores.get(instrument);
+    if (!score) continue;
+
+    if (!firstScore) firstScore = score;
+
+    // Add all parts from this instrument with updated names
+    for (const part of score.parts) {
+      allParts.push({
+        ...part,
+        id: `${instrument}-${part.id}`,
+        name: `${capitalizeFirst(instrument)}${part.name && part.name !== 'Instrument' ? ' - ' + part.name : ''}`,
+      });
+    }
+  }
+
+  // Use metadata from the first score
+  return {
+    id: 'combined-score',
+    title: firstScore?.title || 'Combined Score',
+    composer: firstScore?.composer || '',
+    key: firstScore?.key || 'C',
+    timeSignature: firstScore?.timeSignature || '4/4',
+    tempo: firstScore?.tempo || 120,
+    parts: allParts,
+    measures: [], // Legacy support - use parts instead
+  };
+};
+
+// Helper function to capitalize first letter
+const capitalizeFirst = (str: string): string => {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+// Helper function to extract instrument name from combined score part ID
+// Part IDs in combined score are formatted as: "${instrument}-${originalPartId}"
+const extractInstrumentFromPartId = (partId: string): string | null => {
+  const match = partId.match(/^([^-]+)-/);
+  return match ? match[1] : null;
+};
+
+// Helper function to find which instrument a measure belongs to in combined score
+const findInstrumentForMeasure = (score: Score, measureId: string): string | null => {
+  for (const part of score.parts) {
+    if (part.measures.some(m => m.id === measureId)) {
+      return extractInstrumentFromPartId(part.id);
+    }
+  }
+  return null;
+};
+
+// Helper function to find which instrument a note belongs to in combined score
+const findInstrumentForNote = (score: Score, noteId: string): string | null => {
+  for (const part of score.parts) {
+    for (const measure of part.measures) {
+      if (measure.notes.some(n => n.id === noteId)) {
+        return extractInstrumentFromPartId(part.id);
+      }
+    }
+  }
+  return null;
+};
+
 // Helper function to save current state to history
 const saveToHistory = (state: NotationState): Partial<NotationState> => {
   const snapshot: HistorySnapshot = {
@@ -229,6 +298,18 @@ export const useNotationStore = create<NotationState>((set, get) => ({
 
   setActiveInstrument: (instrument) => {
     const state = get();
+
+    // Special case: "all" means show all instruments combined
+    if (instrument === 'all' && state.availableInstruments.length > 0) {
+      const combinedScore = createCombinedScore(state.scores, state.availableInstruments);
+      set({
+        activeInstrument: instrument,
+        score: combinedScore,
+        selectedNoteIds: [], // Clear selection when switching instruments
+      });
+      return;
+    }
+
     const instrumentScore = state.scores.get(instrument);
 
     set({
@@ -266,13 +347,27 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       // Save current state to history
       const historyUpdate = saveToHistory(state);
 
-      const updatedScore = {
-        ...state.score,
-        measures: state.score.measures.map((m) =>
+      // Update parts structure (primary)
+      const updatedParts = state.score.parts.map((part) => ({
+        ...part,
+        measures: part.measures.map((m) =>
           m.id === measureId
             ? { ...m, notes: [...m.notes, note].sort((a, b) => a.startTime - b.startTime) }
             : m
         ),
+      }));
+
+      // Also update legacy measures for backward compatibility (if it exists)
+      const updatedMeasures = state.score.measures?.map((m) =>
+        m.id === measureId
+          ? { ...m, notes: [...m.notes, note].sort((a, b) => a.startTime - b.startTime) }
+          : m
+      ) || [];
+
+      const updatedScore = {
+        ...state.score,
+        parts: updatedParts,
+        measures: updatedMeasures,
       };
 
       // Update in scores map
@@ -293,15 +388,65 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       // Save current state to history
       const historyUpdate = saveToHistory(state);
 
-      const updatedScore = {
-        ...state.score,
-        measures: state.score.measures.map((m) => ({
+      // Special handling for "all" instruments mode
+      if (state.activeInstrument === 'all') {
+        // Find which instrument this note belongs to
+        const targetInstrument = findInstrumentForNote(state.score, noteId);
+        if (!targetInstrument) return state;
+
+        // Get the target instrument's score
+        const targetScore = state.scores.get(targetInstrument);
+        if (!targetScore) return state;
+
+        // Update the target instrument's score
+        const updatedTargetParts = targetScore.parts.map((part) => ({
+          ...part,
+          measures: part.measures.map((m) => ({
+            ...m,
+            notes: m.notes.filter((n) => n.id !== noteId),
+          })),
+        }));
+
+        const updatedTargetScore = {
+          ...targetScore,
+          parts: updatedTargetParts,
+          measures: updatedTargetParts[0]?.measures || [],
+        };
+
+        // Update the scores map with the modified instrument score
+        const newScores = new Map(state.scores);
+        newScores.set(targetInstrument, updatedTargetScore);
+
+        // Regenerate combined score
+        const newCombinedScore = createCombinedScore(newScores, state.availableInstruments);
+
+        return {
+          ...historyUpdate,
+          scores: newScores,
+          score: newCombinedScore,
+        };
+      }
+
+      // Normal single-instrument mode
+      const updatedParts = state.score.parts.map((part) => ({
+        ...part,
+        measures: part.measures.map((m) => ({
           ...m,
           notes: m.notes.filter((n) => n.id !== noteId),
         })),
+      }));
+
+      const updatedMeasures = state.score.measures?.map((m) => ({
+        ...m,
+        notes: m.notes.filter((n) => n.id !== noteId),
+      })) || [];
+
+      const updatedScore = {
+        ...state.score,
+        parts: updatedParts,
+        measures: updatedMeasures,
       };
 
-      // Update in scores map
       const newScores = new Map(state.scores);
       newScores.set(state.activeInstrument, updatedScore);
 
@@ -319,15 +464,65 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       // Save current state to history
       const historyUpdate = saveToHistory(state);
 
-      const updatedScore = {
-        ...state.score,
-        measures: state.score.measures.map((m) => ({
+      // Special handling for "all" instruments mode
+      if (state.activeInstrument === 'all') {
+        // Find which instrument this note belongs to
+        const targetInstrument = findInstrumentForNote(state.score, noteId);
+        if (!targetInstrument) return state;
+
+        // Get the target instrument's score
+        const targetScore = state.scores.get(targetInstrument);
+        if (!targetScore) return state;
+
+        // Update the target instrument's score
+        const updatedTargetParts = targetScore.parts.map((part) => ({
+          ...part,
+          measures: part.measures.map((m) => ({
+            ...m,
+            notes: m.notes.map((n) => (n.id === noteId ? { ...n, ...changes } : n)),
+          })),
+        }));
+
+        const updatedTargetScore = {
+          ...targetScore,
+          parts: updatedTargetParts,
+          measures: updatedTargetParts[0]?.measures || [],
+        };
+
+        // Update the scores map with the modified instrument score
+        const newScores = new Map(state.scores);
+        newScores.set(targetInstrument, updatedTargetScore);
+
+        // Regenerate combined score
+        const newCombinedScore = createCombinedScore(newScores, state.availableInstruments);
+
+        return {
+          ...historyUpdate,
+          scores: newScores,
+          score: newCombinedScore,
+        };
+      }
+
+      // Normal single-instrument mode
+      const updatedParts = state.score.parts.map((part) => ({
+        ...part,
+        measures: part.measures.map((m) => ({
           ...m,
           notes: m.notes.map((n) => (n.id === noteId ? { ...n, ...changes } : n)),
         })),
+      }));
+
+      const updatedMeasures = state.score.measures?.map((m) => ({
+        ...m,
+        notes: m.notes.map((n) => (n.id === noteId ? { ...n, ...changes } : n)),
+      })) || [];
+
+      const updatedScore = {
+        ...state.score,
+        parts: updatedParts,
+        measures: updatedMeasures,
       };
 
-      // Update in scores map
       const newScores = new Map(state.scores);
       newScores.set(state.activeInstrument, updatedScore);
 
@@ -533,29 +728,62 @@ export const useNotationStore = create<NotationState>((set, get) => ({
       // Save state to history
       const historyUpdate = saveToHistory(state);
 
-      // Find the measure to insert after
-      const measureIndex = state.score.measures.findIndex((m) => m.id === afterMeasureId);
-      if (measureIndex === -1) return state;
+      // Update parts structure (primary)
+      let measureIndex = -1;
+      const updatedParts = state.score.parts.map((part) => {
+        const partMeasureIndex = part.measures.findIndex((m) => m.id === afterMeasureId);
+        if (partMeasureIndex !== -1) {
+          measureIndex = partMeasureIndex;
+        }
 
-      // Create new empty measure
-      const newMeasure: Measure = {
-        id: `measure-${Date.now()}`,
-        number: measureIndex + 2,
-        notes: [],
-      };
+        if (partMeasureIndex === -1) return part;
 
-      // Insert measure and renumber subsequent measures
-      const updatedMeasures = [
-        ...state.score.measures.slice(0, measureIndex + 1),
-        newMeasure,
-        ...state.score.measures.slice(measureIndex + 1).map((m, idx) => ({
-          ...m,
-          number: measureIndex + 3 + idx,
-        })),
-      ];
+        // Create new empty measure
+        const newMeasure: Measure = {
+          id: `measure-${part.id}-${Date.now()}`,
+          number: partMeasureIndex + 2,
+          notes: [],
+        };
+
+        // Insert measure and renumber subsequent measures
+        return {
+          ...part,
+          measures: [
+            ...part.measures.slice(0, partMeasureIndex + 1),
+            newMeasure,
+            ...part.measures.slice(partMeasureIndex + 1).map((m, idx) => ({
+              ...m,
+              number: partMeasureIndex + 3 + idx,
+            })),
+          ],
+        };
+      });
+
+      // Also update legacy measures for backward compatibility (if it exists)
+      let updatedMeasures = state.score.measures || [];
+      if (updatedMeasures.length > 0) {
+        const legacyIndex = updatedMeasures.findIndex((m) => m.id === afterMeasureId);
+        if (legacyIndex !== -1) {
+          const newMeasure: Measure = {
+            id: `measure-${Date.now()}`,
+            number: legacyIndex + 2,
+            notes: [],
+          };
+
+          updatedMeasures = [
+            ...updatedMeasures.slice(0, legacyIndex + 1),
+            newMeasure,
+            ...updatedMeasures.slice(legacyIndex + 1).map((m, idx) => ({
+              ...m,
+              number: legacyIndex + 3 + idx,
+            })),
+          ];
+        }
+      }
 
       const updatedScore = {
         ...state.score,
+        parts: updatedParts,
         measures: updatedMeasures,
       };
 
@@ -574,22 +802,35 @@ export const useNotationStore = create<NotationState>((set, get) => ({
     set((state) => {
       if (!state.score) return state;
 
-      // Don't delete if it's the only measure
-      if (state.score.measures.length <= 1) return state;
+      // Don't delete if it's the only measure in any part
+      const hasOnlyOneMeasure = state.score.parts.some((part) => part.measures.length <= 1);
+      if (hasOnlyOneMeasure) return state;
 
       // Save state to history
       const historyUpdate = saveToHistory(state);
 
-      // Remove measure and renumber
+      // Update parts structure (primary)
+      const updatedParts = state.score.parts.map((part) => ({
+        ...part,
+        measures: part.measures
+          .filter((m) => m.id !== measureId)
+          .map((m, idx) => ({
+            ...m,
+            number: idx + 1,
+          })),
+      }));
+
+      // Also update legacy measures for backward compatibility (if it exists)
       const updatedMeasures = state.score.measures
-        .filter((m) => m.id !== measureId)
+        ?.filter((m) => m.id !== measureId)
         .map((m, idx) => ({
           ...m,
           number: idx + 1,
-        }));
+        })) || [];
 
       const updatedScore = {
         ...state.score,
+        parts: updatedParts,
         measures: updatedMeasures,
       };
 

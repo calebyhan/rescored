@@ -1,0 +1,115 @@
+/* Contemporary Classical - Loading Screen */
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.5s ease;
+}
+
+.loading-screen.complete {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.loading-title {
+  font-family: var(--font-serif);
+  font-size: 4rem;
+  font-weight: 700;
+  color: var(--color-black);
+  margin: 0;
+  letter-spacing: -0.02em;
+  display: flex;
+  gap: 0;
+}
+
+.loading-letter {
+  display: inline-block;
+  opacity: 0;
+  animation: letterFadeIn 0.4s ease forwards;
+}
+
+@keyframes letterFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Elegant underline that draws from left to right */
+.loading-underline {
+  width: 0;
+  height: 1px;
+  background: var(--color-accent);
+  margin-top: 1.5rem;
+  animation: underlineDraw 0.6s ease forwards;
+}
+
+@keyframes underlineDraw {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 120px;
+  }
+}
+
+.loading-subtitle {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  color: var(--color-gray-medium);
+  margin: 1.5rem 0 0 0;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: subtitleFadeIn 0.5s ease forwards;
+}
+
+@keyframes subtitleFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .loading-title {
+    font-size: 3rem;
+  }
+
+  .loading-subtitle {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .loading-title {
+    font-size: 2.5rem;
+  }
+
+  .loading-subtitle {
+    font-size: 0.8125rem;
+  }
+}

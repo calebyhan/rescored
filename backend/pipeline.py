@@ -496,6 +496,16 @@ class TranscriptionPipeline:
             except Exception as e:
                 print(f"   WARNING: Time signature detection failed: {e}")
                 # Keep default 4/4
+
+            # Detect key signature
+            try:
+                key_signature, key_confidence = self.detect_key_signature(source_audio)
+                self.metadata["key_signature"] = key_signature
+                print(f"   Detected key signature: {key_signature} (confidence: {key_confidence:.2f})")
+            except Exception as e:
+                print(f"   WARNING: Key signature detection failed: {e}")
+                # Keep default C major
+                self.metadata["key_signature"] = "C major"
         else:
             detected_tempo = 120.0
             self.metadata["tempo"] = detected_tempo
@@ -2120,6 +2130,88 @@ class TranscriptionPipeline:
         print(f"   Detected time signature: {numerator}/{denominator} (confidence: {confidence:.2f})")
 
         return numerator, denominator, float(confidence)
+
+    def detect_key_signature(self, audio_path: Path) -> tuple[str, float]:
+        """
+        Detect musical key signature from audio using Essentia.
+
+        Uses Essentia's KeyExtractor which implements the Krumhansl-Schmuckler algorithm
+        with chromagram analysis for robust key detection.
+
+        Args:
+            audio_path: Path to audio file
+
+        Returns:
+            (key_signature, confidence) e.g., ("C major", 0.85) or ("A minor", 0.72)
+        """
+        print(f"   Detecting key signature...")
+
+        # Load audio
+        y, sr = librosa.load(str(audio_path), sr=44100, mono=True, duration=120)
+
+        if ESSENTIA_AVAILABLE:
+            # Use Essentia's KeyExtractor (preferred method)
+            import essentia.standard as es
+
+            key_extractor = es.KeyExtractor()
+            key, scale, strength = key_extractor(y)
+
+            # Format: "C major" or "A minor"
+            key_signature = f"{key} {scale}"
+            confidence = float(strength)
+
+            print(f"   Detected key: {key_signature} (confidence: {confidence:.2f})")
+            return key_signature, confidence
+        else:
+            # Fallback to librosa chromagram + template matching
+            print(f"   WARNING: Essentia not available, using librosa fallback for key detection")
+
+            # Compute chromagram
+            chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+
+            # Average chromagram over time
+            chroma_mean = np.mean(chroma, axis=1)
+
+            # Krumhansl-Kessler key profiles
+            major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+            minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+
+            # Normalize profiles
+            major_profile = major_profile / np.sum(major_profile)
+            minor_profile = minor_profile / np.sum(minor_profile)
+
+            # Normalize chroma
+            chroma_mean = chroma_mean / np.sum(chroma_mean)
+
+            # Calculate correlation for all 24 keys (12 major + 12 minor)
+            key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+            max_corr = -1
+            best_key = 'C'
+            best_scale = 'major'
+
+            for i in range(12):
+                # Rotate chroma to test different keys
+                rotated_chroma = np.roll(chroma_mean, -i)
+
+                # Major key correlation
+                major_corr = np.corrcoef(rotated_chroma, major_profile)[0, 1]
+                if major_corr > max_corr:
+                    max_corr = major_corr
+                    best_key = key_names[i]
+                    best_scale = 'major'
+
+                # Minor key correlation
+                minor_corr = np.corrcoef(rotated_chroma, minor_profile)[0, 1]
+                if minor_corr > max_corr:
+                    max_corr = minor_corr
+                    best_key = key_names[i]
+                    best_scale = 'minor'
+
+            key_signature = f"{best_key} {best_scale}"
+            confidence = float(max_corr)
+
+            print(f"   Detected key: {key_signature} (confidence: {confidence:.2f})")
+            return key_signature, confidence
 
     def cleanup(self) -> None:
         """Delete temporary files (except output)."""

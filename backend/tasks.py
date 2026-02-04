@@ -243,7 +243,7 @@ def process_transcription_task(self, job_id: str):
         metadata = getattr(pipeline, 'metadata', {
             "tempo": 120.0,
             "time_signature": {"numerator": 4, "denominator": 4},
-            "key_signature": "C",
+            "key_signature": "C major",
         })
 
         # Get list of successfully transcribed instruments

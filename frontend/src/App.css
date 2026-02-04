@@ -5,12 +5,10 @@
   position: relative;
 }
 
-/* Back button - fixed position top-left */
+/* Back button - non-sticky */
 .back-button {
-  position: fixed;
-  top: 2rem;
-  left: 2rem;
-  z-index: 1000;
+  position: relative;
+  margin: 1.5rem 2rem 0 2rem;
   padding: 0.625rem 1.25rem;
   background: var(--color-white);
   color: var(--color-black);
@@ -21,6 +19,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-block;
 }
 
 .back-button:hover {

@@ -9,6 +9,7 @@ import { NotationCanvas } from './NotationCanvas';
 import { PlaybackControls } from './PlaybackControls';
 import { InstrumentTabs } from './InstrumentTabs';
 import { ScoreHeader } from './ScoreHeader';
+import { DurationButton } from './DurationButton';
 import './ScoreEditor.css';
 
 interface ScoreEditorProps {
@@ -28,6 +29,9 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const selectNote = useNotationStore((state) => state.selectNote);
   const selectedNoteIds = useNotationStore((state) => state.selectedNoteIds);
   const updateNote = useNotationStore((state) => state.updateNote);
+  const currentDuration = useNotationStore((state) => state.currentDuration);
+  const setCurrentDuration = useNotationStore((state) => state.setCurrentDuration);
+  const currentTool = useNotationStore((state) => state.currentTool);
 
   // Undo/Redo
   const undo = useNotationStore((state) => state.undo);
@@ -37,6 +41,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
 
   // Copy/Paste
   const copyNotes = useNotationStore((state) => state.copyNotes);
+  const pasteNotes = useNotationStore((state) => state.pasteNotes);
   const hasClipboard = useNotationStore((state) => state.hasClipboard);
 
   // Pitch editing functions (must be defined before useEffect that uses them)
@@ -70,11 +75,14 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
     loadScore();
   }, [jobId]);
 
-  // Keyboard shortcuts for undo/redo and pitch editing
+  // Consolidated keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Get latest state values for editing operations
+      const { selectedNoteIds, deleteNote, updateNote, deselectAll } = useNotationStore.getState();
 
       // Undo/Redo
       if (cmdOrCtrl && e.key === 'z' && !e.shiftKey) {
@@ -89,6 +97,19 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
         e.preventDefault();
         copyNotes();
       }
+      // Paste (Ctrl+V) - paste to first selected note's measure
+      else if (cmdOrCtrl && e.key === 'v' && selectedNoteIds.length > 0 && hasClipboard()) {
+        e.preventDefault();
+        const { score } = useNotationStore.getState();
+        if (!score) return;
+
+        const firstNoteId = selectedNoteIds[0];
+        const measureId = findMeasureIdByNoteId(score, firstNoteId);
+
+        if (measureId) {
+          pasteNotes(measureId);
+        }
+      }
       // Pitch editing (only if notes are selected)
       else if (selectedNoteIds.length > 0 && e.key === 'ArrowUp') {
         e.preventDefault();
@@ -97,11 +118,51 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
         e.preventDefault();
         handlePitchDown();
       }
+      // Delete key - remove selected notes
+      else if (e.key === 'Delete' && selectedNoteIds.length > 0) {
+        selectedNoteIds.forEach(id => deleteNote(id));
+        deselectAll();
+        e.preventDefault();
+      }
+      // Number keys 1-8 - change note duration
+      else if (e.key >= '1' && e.key <= '8' && selectedNoteIds.length > 0) {
+        const durations = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th'];
+        const newDuration = durations[parseInt(e.key) - 1];
+        selectedNoteIds.forEach(id => updateNote(id, { duration: newDuration }));
+        e.preventDefault();
+      }
+      // Accidental keys - enharmonic conversion
+      else if (selectedNoteIds.length > 0 && (e.key === '#' || e.key === 'b' || e.key === 'n')) {
+        e.preventDefault();
+
+        const accidentalType: 'sharp' | 'flat' | 'natural' =
+          e.key === '#' ? 'sharp' : e.key === 'b' ? 'flat' : 'natural';
+
+        selectedNoteIds.forEach(id => {
+          const note = findNoteById(score, id);
+          if (note && !note.isRest) {
+            const newPitch = applyEnharmonic(note.pitch, accidentalType);
+            const accidental = accidentalType === 'natural' ? undefined : accidentalType;
+            updateNote(id, { pitch: newPitch, accidental });
+          }
+        });
+      }
+      // 'A' key - toggle add note mode
+      else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        const { currentTool, setCurrentTool } = useNotationStore.getState();
+        setCurrentTool(currentTool === 'add' ? 'select' : 'add');
+      }
+      // Escape key - deselect all notes
+      else if (e.key === 'Escape' && selectedNoteIds.length > 0) {
+        deselectAll();
+        e.preventDefault();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, selectedNoteIds, handlePitchUp, handlePitchDown, copyNotes]);
+  }, [undo, redo, canUndo, canRedo, handlePitchUp, handlePitchDown, copyNotes]);
 
   const loadScore = async () => {
     try {
@@ -131,8 +192,10 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
         });
       }
 
-      // Set first instrument as active
-      if (transcribedInstruments.length > 0) {
+      // Set "all" as active if multiple instruments, otherwise first instrument
+      if (transcribedInstruments.length > 1) {
+        setActiveInstrument('all');
+      } else if (transcribedInstruments.length > 0) {
         setActiveInstrument(transcribedInstruments[0]);
       }
 
@@ -144,37 +207,6 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
     }
   };
 
-  // Keyboard handlers for editing
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Get latest state values
-      const { selectedNoteIds, deleteNote, updateNote, deselectAll } = useNotationStore.getState();
-
-      // Delete key - remove selected notes
-      if (e.key === 'Delete' && selectedNoteIds.length > 0) {
-        selectedNoteIds.forEach(id => deleteNote(id));
-        deselectAll();
-        e.preventDefault(); // Prevent default browser behavior
-      }
-
-      // Number keys 1-8 - change note duration
-      if (e.key >= '1' && e.key <= '8' && selectedNoteIds.length > 0) {
-        const durations = ['whole', 'half', 'quarter', 'eighth', '16th', '32nd', '64th', '128th'];
-        const newDuration = durations[parseInt(e.key) - 1];
-        selectedNoteIds.forEach(id => updateNote(id, { duration: newDuration }));
-        e.preventDefault();
-      }
-
-      // Escape key - deselect all notes
-      if (e.key === 'Escape' && selectedNoteIds.length > 0) {
-        deselectAll();
-        e.preventDefault();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []); // Empty deps - uses getState() for latest values
 
   const handleExportMIDI = async () => {
     try {
@@ -254,54 +286,30 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
         </div>
 
         <div className="editor-sidebar-content">
-          {/* Score Info */}
-          {score && (
-            <div className="sidebar-section">
-              <h3 className="sidebar-section-title">Score Info</h3>
-              <div className="sidebar-score-header">
-                <h4 className="sidebar-score-title">{score.title}</h4>
-                {score.composer && <p className="sidebar-score-composer">{score.composer}</p>}
-              </div>
-              <div className="sidebar-metadata">
-                <div className="metadata-item">
-                  <span className="metadata-label">Tempo</span>
-                  <span className="metadata-value">♩ = {score.tempo}</span>
-                </div>
-                <div className="metadata-item">
-                  <span className="metadata-label">Key</span>
-                  <span className="metadata-value">{score.key}</span>
-                </div>
-                <div className="metadata-item">
-                  <span className="metadata-label">Time</span>
-                  <span className="metadata-value">{score.timeSignature}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Instruments */}
           {instruments.length > 1 && (
             <div className="sidebar-section">
               <h3 className="sidebar-section-title">Instruments</h3>
               <div className="sidebar-instrument-tabs">
+                <button
+                  key="all"
+                  className={`sidebar-instrument-tab ${activeInstrument === 'all' ? 'active' : ''}`}
+                  onClick={() => setActiveInstrument('all')}
+                >
+                  All Instruments
+                </button>
                 {instruments.map((instrument) => (
                   <button
                     key={instrument}
                     className={`sidebar-instrument-tab ${activeInstrument === instrument ? 'active' : ''}`}
                     onClick={() => setActiveInstrument(instrument)}
                   >
-                    {getInstrumentIcon(instrument)} {capitalizeFirst(instrument)}
+                    {capitalizeFirst(instrument)}
                   </button>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Playback */}
-          <div className="sidebar-section">
-            <h3 className="sidebar-section-title">Playback</h3>
-            <PlaybackControls />
-          </div>
 
           {/* Quick Add Note */}
           <div className="sidebar-section">
@@ -319,87 +327,150 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
             <h3 className="sidebar-section-title">Quick Tips</h3>
             <div style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: '1.5' }}>
               <p style={{ margin: '0 0 0.5rem 0' }}>• Click notes to select</p>
-              <p style={{ margin: '0 0 0.5rem 0' }}>• Press Delete to remove</p>
-              <p style={{ margin: '0 0 0.5rem 0' }}>• Press 1-8 for duration</p>
-              <p style={{ margin: '0' }}>• Space to play/pause</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Shift+Click for multi-select</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Delete key to remove notes</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• Arrow keys for pitch</p>
+              <p style={{ margin: '0 0 0.5rem 0' }}>• #, b, n for accidentals</p>
+              <p style={{ margin: '0' }}>• Ctrl+C/V to copy/paste</p>
             </div>
           </div>
         </div>
 
         {/* Actions Footer */}
         <div className="sidebar-actions">
-          <button onClick={handleExportMIDI} className="primary">
-            Export Current Instrument (MIDI)
-          </button>
-          {instruments.length > 1 && (
-            <button onClick={handleExportAllInstruments}>
-              Export All Instruments
+          {activeInstrument !== 'all' && (
+            <button onClick={handleExportMIDI} className="primary">
+              Export {capitalizeFirst(activeInstrument)} (MIDI)
             </button>
           )}
-          <button className="secondary">Export MusicXML (Soon)</button>
+          {instruments.length > 1 && (
+            <button onClick={handleExportAllInstruments} className={activeInstrument === 'all' ? 'primary' : ''}>
+              Export All Instruments (MIDI)
+            </button>
+          )}
+          {activeInstrument === 'all' && instruments.length === 1 && (
+            <button onClick={handleExportMIDI} className="primary">
+              Export MIDI
+            </button>
+          )}
         </div>
       </aside>
 
       {/* Right Main Area - Notation Canvas */}
       <main className="editor-main">
-        {/* Toolbar */}
-        <div className="editor-toolbar">
-          <div className="toolbar-group">
+        {/* Unified Control Bar */}
+        <div className="unified-control-bar">
+          {/* Left: Undo/Redo */}
+          <div className="control-section left">
             <button
               onClick={() => undo()}
               disabled={!canUndo()}
-              className="toolbar-button"
+              className="control-button"
               title="Undo (Ctrl+Z)"
             >
-              ↶ Undo
+              ↶
             </button>
             <button
               onClick={() => redo()}
               disabled={!canRedo()}
-              className="toolbar-button"
+              className="control-button"
               title="Redo (Ctrl+Y)"
             >
-              ↷ Redo
+              ↷
             </button>
           </div>
 
-          {selectedNoteIds.length > 0 && (
-            <>
-              <div className="toolbar-group">
+          {/* Middle: Music Editing */}
+          <div className="control-section middle">
+            {selectedNoteIds.length > 0 && (
+              <>
                 <button
                   onClick={() => copyNotes()}
-                  className="toolbar-button"
+                  className="control-button"
                   title="Copy (Ctrl+C)"
                 >
-                  📋 Copy
+                  Copy
                 </button>
-              </div>
-
-              <div className="toolbar-group">
                 <button
                   onClick={handlePitchUp}
-                  className="toolbar-button"
+                  className="control-button"
                   title="Increase Pitch (↑)"
                 >
-                  ↑ Pitch Up
+                  ↑
                 </button>
                 <button
                   onClick={handlePitchDown}
-                  className="toolbar-button"
+                  className="control-button"
                   title="Decrease Pitch (↓)"
                 >
-                  ↓ Pitch Down
+                  ↓
                 </button>
-              </div>
-            </>
-          )}
+                <div className="control-divider"></div>
+              </>
+            )}
+
+            {/* Duration Palette */}
+            <div className="duration-palette-inline">
+              <DurationButton
+                duration="whole"
+                isActive={currentDuration === 'whole'}
+                onClick={() => setCurrentDuration('whole')}
+                title="Whole Note"
+              />
+              <DurationButton
+                duration="half"
+                isActive={currentDuration === 'half'}
+                onClick={() => setCurrentDuration('half')}
+                title="Half Note"
+              />
+              <DurationButton
+                duration="quarter"
+                isActive={currentDuration === 'quarter'}
+                onClick={() => setCurrentDuration('quarter')}
+                title="Quarter Note"
+              />
+              <DurationButton
+                duration="eighth"
+                isActive={currentDuration === 'eighth'}
+                onClick={() => setCurrentDuration('eighth')}
+                title="Eighth Note"
+              />
+              <DurationButton
+                duration="16th"
+                isActive={currentDuration === '16th'}
+                onClick={() => setCurrentDuration('16th')}
+                title="16th Note"
+              />
+              <DurationButton
+                duration="32nd"
+                isActive={currentDuration === '32nd'}
+                onClick={() => setCurrentDuration('32nd')}
+                title="32nd Note"
+              />
+            </div>
+          </div>
+
+          {/* Right: Playback + Tempo */}
+          <div className="control-section right">
+            <PlaybackControls />
+          </div>
         </div>
 
         <div className="editor-main-content">
           <NotationCanvas
             interactive={true}
-            onNoteSelect={(noteId) => selectNote(noteId)}
+            onNoteSelect={(noteId, shiftKey) => {
+              if (shiftKey) {
+                // Multi-select: toggle in/out
+                selectNote(noteId);
+              } else {
+                // Single-select: replace selection
+                deselectAll();
+                selectNote(noteId);
+              }
+            }}
             selectedNotes={selectedNoteIds}
+            currentTool={currentTool}
           />
         </div>
       </main>
@@ -460,6 +531,66 @@ function transposePitch(pitch: string, semitones: number): string | null {
   };
 
   return pitchClassMap[pitchClass] + newOctave;
+}
+
+// Find which measure contains a given note ID
+function findMeasureIdByNoteId(score: any, noteId: string): string | null {
+  for (const part of score.parts) {
+    for (const measure of part.measures) {
+      if (measure.notes.some((n: any) => n.id === noteId)) {
+        return measure.id;
+      }
+    }
+  }
+
+  // Fallback: check legacy measures
+  for (const measure of score.measures || []) {
+    if (measure.notes.some((n: any) => n.id === noteId)) {
+      return measure.id;
+    }
+  }
+
+  return null;
+}
+
+// Apply enharmonic conversion to a pitch
+function applyEnharmonic(pitch: string, accidentalType: 'sharp' | 'flat' | 'natural'): string {
+  const match = pitch.match(/^([A-G][#b]?)(\d+)$/);
+  if (!match) return pitch;
+
+  const [, noteClass, octave] = match;
+
+  const enharmonicMap: Record<string, Record<string, string>> = {
+    'C': { 'sharp': 'C#', 'flat': 'Db', 'natural': 'C' },
+    'C#': { 'sharp': 'C#', 'flat': 'Db', 'natural': 'C' },
+    'Db': { 'sharp': 'C#', 'flat': 'Db', 'natural': 'D' },
+    'D': { 'sharp': 'D#', 'flat': 'Eb', 'natural': 'D' },
+    'D#': { 'sharp': 'D#', 'flat': 'Eb', 'natural': 'D' },
+    'Eb': { 'sharp': 'D#', 'flat': 'Eb', 'natural': 'E' },
+    'E': { 'sharp': 'F', 'flat': 'E', 'natural': 'E' },
+    'F': { 'sharp': 'F#', 'flat': 'F', 'natural': 'F' },
+    'F#': { 'sharp': 'F#', 'flat': 'Gb', 'natural': 'F' },
+    'Gb': { 'sharp': 'F#', 'flat': 'Gb', 'natural': 'G' },
+    'G': { 'sharp': 'G#', 'flat': 'Ab', 'natural': 'G' },
+    'G#': { 'sharp': 'G#', 'flat': 'Ab', 'natural': 'G' },
+    'Ab': { 'sharp': 'G#', 'flat': 'Ab', 'natural': 'A' },
+    'A': { 'sharp': 'A#', 'flat': 'Bb', 'natural': 'A' },
+    'A#': { 'sharp': 'A#', 'flat': 'Bb', 'natural': 'A' },
+    'Bb': { 'sharp': 'A#', 'flat': 'Bb', 'natural': 'B' },
+    'B': { 'sharp': 'C', 'flat': 'B', 'natural': 'B' },
+  };
+
+  const newNoteClass = enharmonicMap[noteClass]?.[accidentalType] || noteClass;
+
+  // Handle octave changes (B# → C, Cb → B)
+  let newOctave = octave;
+  if (noteClass === 'B' && accidentalType === 'sharp') {
+    newOctave = String(parseInt(octave) + 1); // B# → C in next octave
+  } else if (noteClass === 'C' && accidentalType === 'flat') {
+    newOctave = String(parseInt(octave) - 1); // Cb → B in previous octave
+  }
+
+  return newNoteClass + newOctave;
 }
 
 function getInstrumentIcon(instrument: string): string {

@@ -7,16 +7,15 @@ import './InstrumentSelector.css';
 export interface Instrument {
   id: string;
   label: string;
-  icon: string;
 }
 
 const INSTRUMENTS: Instrument[] = [
-  { id: 'piano', label: 'Piano', icon: '🎹' },
-  { id: 'vocals', label: 'Vocals', icon: '🎤' },
-  { id: 'drums', label: 'Drums', icon: '🥁' },
-  { id: 'bass', label: 'Bass', icon: '🎸' },
-  { id: 'guitar', label: 'Guitar', icon: '🎸' },
-  { id: 'other', label: 'Other Instruments', icon: '🎵' }
+  { id: 'piano', label: 'Piano' },
+  { id: 'vocals', label: 'Vocals' },
+  { id: 'drums', label: 'Drums' },
+  { id: 'bass', label: 'Bass' },
+  { id: 'guitar', label: 'Guitar' },
+  { id: 'other', label: 'Other Instruments' }
 ];
 
 export const VOCAL_INSTRUMENTS = [
@@ -73,7 +72,6 @@ export function InstrumentSelector({
             onClick={() => handleToggle(instrument.id)}
             aria-pressed={selectedInstruments.includes(instrument.id)}
           >
-            <span className="instrument-icon">{instrument.icon}</span>
             <span className="instrument-label">{instrument.label}</span>
           </button>
         ))}

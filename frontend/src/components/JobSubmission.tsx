@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { api } from '../api/client';
 import type { ProgressUpdate } from '../api/client';
 import { InstrumentSelector, VOCAL_INSTRUMENTS } from './InstrumentSelector';
+import { Footer } from './Footer';
 import './JobSubmission.css';
 
 interface JobSubmissionProps {
@@ -178,9 +179,8 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
       {/* Hero Section - only show when idle */}
       {(status === 'idle' || status === 'submitting') && (
         <div className="hero-section">
-          <h1 className="hero-title">Turn Music into Sheet Music</h1>
+          <h1 className="hero-title">rescored</h1>
           <p className="hero-subtitle">AI-powered transcription from YouTube or audio files</p>
-          <p className="hero-description">Professional-quality notation • Editable scores • Export to MIDI</p>
         </div>
       )}
 
@@ -275,7 +275,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
             {error && <div role="alert" className="error-alert">{error}</div>}
 
             <button type="submit" disabled={status === 'submitting'}>
-              {status === 'submitting' ? '⏳ Submitting...' : '🎵 Start Transcription'}
+              {status === 'submitting' ? '⏳ Submitting...' : 'Start Transcription'}
             </button>
           </form>
         </div>
@@ -313,6 +313,8 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   );
 }

@@ -120,6 +120,197 @@
   background: var(--color-background);
 }
 
+/* Horizontal Score Info Bar */
+.score-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: var(--color-white);
+  border-bottom: 1px solid var(--color-gray-light);
+  gap: 2rem;
+}
+
+.score-info-title {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.score-info-title h3 {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-black);
+  margin: 0;
+}
+
+.score-info-title .score-composer {
+  font-size: 0.875rem;
+  color: var(--color-gray-medium);
+  font-style: italic;
+}
+
+.score-info-metadata {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.score-info-metadata .metadata-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.score-info-metadata .metadata-label {
+  font-weight: 600;
+  color: var(--color-gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+}
+
+.score-info-metadata .metadata-value {
+  font-family: var(--font-mono);
+  color: var(--color-black);
+  font-weight: 500;
+}
+
+/* Unified Control Bar - Left: Undo/Redo, Middle: Editing, Right: Playback */
+.unified-control-bar {
+  padding: 0.75rem 2rem;
+  background: var(--color-white);
+  border-bottom: 1px solid var(--color-gray-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.unified-control-bar .control-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unified-control-bar .control-section.left {
+  justify-content: flex-start;
+}
+
+.unified-control-bar .control-section.middle {
+  justify-content: center;
+  flex: 1;
+}
+
+.unified-control-bar .control-section.right {
+  justify-content: flex-end;
+}
+
+/* Control buttons (undo/redo/copy/pitch) */
+.unified-control-bar .control-button {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--color-gray-light);
+  background: var(--color-white);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unified-control-bar .control-button:hover:not(:disabled) {
+  background: var(--color-black);
+  border-color: var(--color-black);
+  color: var(--color-white);
+}
+
+.unified-control-bar .control-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Playback controls within unified bar */
+.unified-control-bar .playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unified-control-bar .playback-controls .playback-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-gray-light);
+  background: var(--color-white);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unified-control-bar .playback-controls .playback-button svg {
+  display: block;
+}
+
+.unified-control-bar .playback-controls .playback-button:hover:not(:disabled) {
+  background: var(--color-black);
+  border-color: var(--color-black);
+  color: var(--color-white);
+}
+
+.unified-control-bar .playback-controls .playback-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.unified-control-bar .playback-controls .playback-button.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-white);
+}
+
+.unified-control-bar .tempo-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.unified-control-bar .tempo-control label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-gray-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.unified-control-bar .tempo-control .tempo-input {
+  width: 60px;
+  padding: 0.375rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 2px;
+  background: var(--color-white);
+  color: var(--color-black);
+  text-align: center;
+}
+
+.unified-control-bar .tempo-control .tempo-input:focus {
+  outline: none;
+  border-color: var(--color-black);
+}
+
 .editor-main-header {
   padding: 1.5rem 2rem;
   background: var(--color-white);
@@ -306,6 +497,61 @@
   color: var(--color-white);
 }
 
+/* Duration palette inline (in top bar) */
+.duration-palette-inline {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.duration-button-inline {
+  min-width: 44px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-gray-light);
+  background: var(--color-white);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  position: relative;
+}
+
+.duration-button-vexflow {
+  transform: scale(0.5);
+  transform-origin: center center;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.duration-button-inline svg {
+  display: block;
+}
+
+.duration-button-inline:hover {
+  background: var(--color-background);
+  border-color: var(--color-gray-medium);
+}
+
+.duration-button-inline.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-white);
+}
+
+/* Control divider */
+.control-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--color-gray-light);
+  margin: 0 0.5rem;
+}
+
 /* Responsive design */
 @media (max-width: 1024px) {
   .score-editor {
@@ -343,6 +589,7 @@
 }
 
 /* Editor toolbar (undo/redo) */
+/* Legacy toolbar styles (kept for compatibility if needed elsewhere) */
 .editor-toolbar {
   padding: 1rem 2rem;
   background: var(--color-white);

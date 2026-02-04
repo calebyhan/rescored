@@ -26,13 +26,13 @@ export async function parseMidiFile(
 ): Promise<Score> {
   const midi = new Midi(midiData);
 
-  // Extract metadata
-  const tempo = options.tempo || midi.header.tempos[0]?.bpm || 120;
-  const timeSignature = options.timeSignature || {
-    numerator: midi.header.timeSignatures[0]?.timeSignature[0] || 4,
-    denominator: midi.header.timeSignatures[0]?.timeSignature[1] || 4,
+  // Extract metadata (use ?? to prefer options over MIDI headers)
+  const tempo = options.tempo ?? midi.header.tempos[0]?.bpm ?? 120;
+  const timeSignature = options.timeSignature ?? {
+    numerator: midi.header.timeSignatures[0]?.timeSignature[0] ?? 4,
+    denominator: midi.header.timeSignatures[0]?.timeSignature[1] ?? 4,
   };
-  const keySignature = options.keySignature || 'C';
+  const keySignature = options.keySignature ?? 'C';
 
   // Parse all tracks into single note list
   const allNotes = extractNotesFromMidi(midi);
@@ -105,6 +105,10 @@ function createPartsFromNotes(
     let trebleNotes: MidiNote[];
     let bassNotes: MidiNote[];
 
+    console.log('[Staff Split] Total notes to split:', notes.length);
+    console.log('[Staff Split] Using intelligent split:', useIntelligentSplit);
+    console.log('[Staff Split] Middle C note (fallback):', middleCNote);
+
     if (useIntelligentSplit && notes.length > 0) {
       // Use intelligent clustering-based split
       try {
@@ -121,28 +125,44 @@ function createPartsFromNotes(
 
         trebleNotes = result.trebleNotes;
         bassNotes = result.bassNotes;
+
+        console.log('[Staff Split] Intelligent split result:');
+        console.log('  - Treble notes:', trebleNotes.length);
+        console.log('  - Bass notes:', bassNotes.length);
+        if (trebleNotes.length > 0) {
+          const treblePitches = trebleNotes.map(n => n.midi);
+          console.log('  - Treble range:', Math.min(...treblePitches), '-', Math.max(...treblePitches));
+        }
+        if (bassNotes.length > 0) {
+          const bassPitches = bassNotes.map(n => n.midi);
+          console.log('  - Bass range:', Math.min(...bassPitches), '-', Math.max(...bassPitches));
+        }
       } catch (error) {
-        console.warn('Intelligent split failed, falling back to middle C:', error);
+        console.warn('[Staff Split] Intelligent split failed, falling back to middle C:', error);
         // Fallback to simple split
         trebleNotes = notes.filter((n) => n.midi >= middleCNote);
         bassNotes = notes.filter((n) => n.midi < middleCNote);
       }
     } else {
       // Simple split at middle C
+      console.log('[Staff Split] Using simple middle C split');
       trebleNotes = notes.filter((n) => n.midi >= middleCNote);
       bassNotes = notes.filter((n) => n.midi < middleCNote);
+      console.log('[Staff Split] Simple split result:');
+      console.log('  - Treble notes:', trebleNotes.length);
+      console.log('  - Bass notes:', bassNotes.length);
     }
 
     return [
       {
         id: 'part-treble',
-        name: 'Piano Right Hand',
+        name: 'Piano - Right Hand',
         clef: 'treble',
         measures: createMeasures(trebleNotes, measureDuration, tempo),
       },
       {
         id: 'part-bass',
-        name: 'Piano Left Hand',
+        name: 'Piano - Left Hand',
         clef: 'bass',
         measures: createMeasures(bassNotes, measureDuration, tempo),
       },
@@ -189,10 +209,13 @@ function createMeasures(notes: MidiNote[], measureDuration: number, tempo: numbe
       .filter((n) => n.time >= measureStart && n.time < measureEnd)
       .map((midiNote, idx) => convertMidiNoteToNote(midiNote, `m${i + 1}-n${idx}`, measureStart, tempo));
 
+    // Insert rests to fill gaps
+    const notesWithRests = insertRests(measureNotes, measureDuration, tempo);
+
     measures.push({
       id: `measure-${i + 1}`,
       number: i + 1,
-      notes: measureNotes,
+      notes: notesWithRests,
     });
   }
 
@@ -283,6 +306,164 @@ function durationToNoteName(duration: number, tempo: number): { duration: string
     duration: closestDuration[1],
     dotted: closestDuration[2],
   };
+}
+
+/**
+ * Insert rest notes to fill gaps in a measure where no notes are playing
+ */
+function insertRests(notes: Note[], measureDuration: number, tempo: number): Note[] {
+  const quarterNoteDuration = 60 / tempo;
+  const timeSignature = '4/4'; // Default, would ideally be passed in
+
+  if (notes.length === 0) {
+    // Empty measure - return a measure rest
+    return [
+      {
+        id: 'rest-measure',
+        pitch: 'B4',
+        duration: 'whole',
+        octave: 4,
+        startTime: 0,
+        dotted: false,
+        isRest: true,
+      },
+    ];
+  }
+
+  // Build timeline of when notes are sounding
+  const events: Array<{ time: number; type: 'start' | 'end' }> = [];
+
+  for (const note of notes) {
+    events.push({ time: note.startTime, type: 'start' });
+    // Calculate end time based on duration
+    const durationInQuarters = durationToQuarters(note.duration, note.dotted);
+    events.push({ time: note.startTime + durationInQuarters, type: 'end' });
+  }
+
+  // Sort events by time
+  events.sort((a, b) => a.time - b.time);
+
+  // Track periods where NO notes are sounding
+  const gaps: Array<{ start: number; end: number }> = [];
+  let activeNotes = 0;
+  let gapStart = 0;
+
+  for (const event of events) {
+    if (activeNotes === 0 && event.type === 'start') {
+      // Gap ends, note starts
+      if (event.time > gapStart + 0.05) {
+        // Small epsilon to avoid tiny gaps
+        gaps.push({ start: gapStart, end: event.time });
+      }
+    }
+
+    if (event.type === 'start') {
+      activeNotes++;
+    } else {
+      activeNotes--;
+      if (activeNotes === 0) {
+        // Gap begins
+        gapStart = event.time;
+      }
+    }
+  }
+
+  // Check for gap at end of measure
+  const lastNoteEnd = Math.max(...notes.map((n) => n.startTime + durationToQuarters(n.duration, n.dotted)));
+  if (lastNoteEnd < measureDuration - 0.05) {
+    gaps.push({ start: lastNoteEnd, end: measureDuration });
+  }
+
+  // Generate rest notes for gaps
+  const restNotes: Note[] = [];
+  let restId = 0;
+
+  for (const gap of gaps) {
+    const gapDuration = gap.end - gap.start;
+
+    // Skip very small gaps (less than 32nd note)
+    if (gapDuration < 0.125) continue;
+
+    // Break gap into standard rest durations
+    const rests = quantizeRestDuration(gapDuration);
+    let currentTime = gap.start;
+
+    for (const restDuration of rests) {
+      restNotes.push({
+        id: `rest-${restId++}`,
+        pitch: 'B4',
+        duration: restDuration.duration,
+        octave: 4,
+        startTime: currentTime,
+        dotted: restDuration.dotted,
+        isRest: true,
+      });
+      currentTime += durationToQuarters(restDuration.duration, restDuration.dotted);
+    }
+  }
+
+  // Combine notes and rests, sort by start time
+  return [...notes, ...restNotes].sort((a, b) => a.startTime - b.startTime);
+}
+
+/**
+ * Convert note duration name to quarter note units
+ */
+function durationToQuarters(duration: string, dotted: boolean): number {
+  const base: Record<string, number> = {
+    whole: 4,
+    half: 2,
+    quarter: 1,
+    eighth: 0.5,
+    '16th': 0.25,
+    '32nd': 0.125,
+  };
+
+  const value = base[duration] || 1;
+  return dotted ? value * 1.5 : value;
+}
+
+/**
+ * Break a gap duration into standard rest durations
+ */
+function quantizeRestDuration(duration: number): Array<{ duration: string; dotted: boolean }> {
+  const rests: Array<{ duration: string; dotted: boolean }> = [];
+  let remaining = duration;
+
+  // Standard rest values in descending order
+  const restValues: Array<[number, string, boolean]> = [
+    [4, 'whole', false],
+    [3, 'half', true],
+    [2, 'half', false],
+    [1.5, 'quarter', true],
+    [1, 'quarter', false],
+    [0.75, 'eighth', true],
+    [0.5, 'eighth', false],
+    [0.375, '16th', true],
+    [0.25, '16th', false],
+    [0.125, '32nd', false],
+  ];
+
+  while (remaining > 0.05) {
+    // Small epsilon to handle floating point errors
+    let matched = false;
+
+    for (const [value, name, dotted] of restValues) {
+      if (remaining >= value - 0.05) {
+        rests.push({ duration: name, dotted });
+        remaining -= value;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      // Remaining duration too small, skip it
+      break;
+    }
+  }
+
+  return rests;
 }
 
 /**

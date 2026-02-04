@@ -45,26 +45,14 @@ export function PlaybackControls(props: PlaybackControlsProps) {
   const animationFrameRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const pausedAtRef = useRef<number>(0);
+  const audioContextStartedRef = useRef<boolean>(false);
 
   const score = useNotationStore?.((state) => state.score);
   const setPlayingNoteIds = useNotationStore?.((state) => state.setPlayingNoteIds);
   const activeInstrument = useNotationStore?.((state) => state.activeInstrument);
 
+  // Cleanup on unmount only - don't create sampler until user interaction
   useEffect(() => {
-    // Initialize instrument-specific sampler based on active instrument
-    if (!score || !activeInstrument) return;
-
-    // Dynamically import instrument sampler factory
-    import('../utils/instrument-samplers').then(({ createInstrumentSampler }) => {
-      // Dispose old sampler if exists
-      if (samplerRef.current) {
-        samplerRef.current.dispose();
-      }
-
-      // Create instrument-specific sampler
-      samplerRef.current = createInstrumentSampler(activeInstrument as any);
-    });
-
     return () => {
       // Cleanup on unmount
       if (animationFrameRef.current) {
@@ -77,7 +65,15 @@ export function PlaybackControls(props: PlaybackControlsProps) {
       if (transport?.stop) transport.stop();
       if (typeof transport?.cancel === 'function') transport.cancel();
     };
-  }, [score, activeInstrument]); // Re-create sampler when score or instrument changes
+  }, []);
+
+  // When instrument changes, dispose old sampler (new one will be created on next play)
+  useEffect(() => {
+    if (samplerRef.current) {
+      samplerRef.current.dispose();
+      samplerRef.current = null;
+    }
+  }, [activeInstrument]);
 
   // Sync props to state when provided
   useEffect(() => { if (props?.isPlaying !== undefined) setIsPlaying(props.isPlaying); }, [props?.isPlaying]);
@@ -112,8 +108,6 @@ export function PlaybackControls(props: PlaybackControlsProps) {
   };
 
   const handlePlay = async () => {
-    if (!samplerRef.current) return;
-
     // If no score loaded, just invoke callbacks and mark playing for tests
     if (!score) {
       setIsPlaying(true);
@@ -121,7 +115,27 @@ export function PlaybackControls(props: PlaybackControlsProps) {
       return;
     }
 
-    await Tone.start();
+    // CRITICAL: Start AudioContext on user gesture BEFORE creating any Tone.js objects
+    if (!audioContextStartedRef.current) {
+      try {
+        await Tone.start();
+        audioContextStartedRef.current = true;
+      } catch (err) {
+        console.error('Failed to start audio context:', err);
+        return;
+      }
+    }
+
+    // Lazy initialization: Create sampler after AudioContext is started
+    if (!samplerRef.current) {
+      try {
+        const { createInstrumentSampler } = await import('../utils/instrument-samplers');
+        samplerRef.current = createInstrumentSampler(activeInstrument as any);
+      } catch (err) {
+        console.error('Failed to create instrument sampler:', err);
+        return;
+      }
+    }
 
     // Clear any previously scheduled events
     if (typeof (Tone.Transport as any)?.cancel === 'function') {
@@ -327,72 +341,60 @@ export function PlaybackControls(props: PlaybackControlsProps) {
 
   return (
     <div className="playback-controls">
-      <button aria-label="play" onClick={props?.onPlay ? props.onPlay : handlePlay} disabled={props?.loading || props?.audioLoaded === false || isPlaying}>Play</button>
-      <button aria-label="pause" onClick={props?.onPause ? props.onPause : handlePause} disabled={!isPlaying}>Pause</button>
-      <button aria-label="stop" onClick={props?.onStop ? props.onStop : handleStop} disabled={props?.audioLoaded === false}>Stop</button>
-
-      <div className="tempo-control">
-        <label>
-          Tempo
-          <input
-            aria-label="tempo"
-            type="range"
-            min={(props?.minTempo ?? 40).toString()}
-            max={(props?.maxTempo ?? 240).toString()}
-            value={tempo}
-            onChange={(e) => handleTempoChange(parseInt(e.target.value))}
-          />
-        </label>
-        <span>{tempo}</span>
-      </div>
-
-      {props?.duration !== undefined && (
-        <input
-          aria-label="seek"
-          role="slider"
-          type="range"
-          min="0"
-          max={String(props.duration)}
-          value={currentPosition}
-          onChange={(e) => {
-            const val = parseInt((e.target as HTMLInputElement).value);
-            setCurrentPosition(val);
-            if (props?.onSeek) props.onSeek(val);
-          }}
-        />
-      )}
-
-      <div className="time-display">
-        <span>{formatTime(currentPosition)}</span>
-        {props?.duration !== undefined && <span> / {formatTime(props.duration)}</span>}
-      </div>
-
-      {props?.showVolumeControl && (
-        <div className="volume-control">
-          <label>
-            Volume
-            <input
-              aria-label="volume"
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={props?.volume ?? 1}
-              onChange={(e) => props?.onVolumeChange && props.onVolumeChange(parseFloat((e.target as HTMLInputElement).value))}
-            />
-          </label>
-        </div>
-      )}
-
+      <button
+        aria-label="play"
+        onClick={props?.onPlay ? props.onPlay : handlePlay}
+        disabled={props?.loading || props?.audioLoaded === false || isPlaying}
+        className="playback-button"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4 2 L4 14 L13 8 Z" />
+        </svg>
+      </button>
+      <button
+        aria-label="pause"
+        onClick={props?.onPause ? props.onPause : handlePause}
+        disabled={!isPlaying}
+        className="playback-button"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="4" y="3" width="3" height="10" />
+          <rect x="9" y="3" width="3" height="10" />
+        </svg>
+      </button>
+      <button
+        aria-label="stop"
+        onClick={props?.onStop ? props.onStop : handleStop}
+        disabled={props?.audioLoaded === false}
+        className="playback-button"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="4" y="4" width="8" height="8" />
+        </svg>
+      </button>
       <button
         aria-label="loop"
-        className={props?.loop ? 'active' : ''}
+        className={`playback-button ${props?.loop ? 'active' : ''}`}
         onClick={() => props?.onLoopToggle && props.onLoopToggle(!props.loop)}
       >
-        Loop
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M3 8 C3 5.5 5 3.5 8 3.5 C11 3.5 13 5.5 13 8 C13 10.5 11 12.5 8 12.5 L6 12.5" />
+          <path d="M7 11 L5 12.5 L7 14" />
+        </svg>
       </button>
 
-      {props?.loading && <div>Loading...</div>}
+      <div className="tempo-control">
+        <label>Tempo</label>
+        <input
+          aria-label="tempo"
+          type="number"
+          min={props?.minTempo ?? 40}
+          max={props?.maxTempo ?? 240}
+          value={tempo}
+          onChange={(e) => handleTempoChange(parseInt(e.target.value))}
+          className="tempo-input"
+        />
+      </div>
     </div>
   );
 }

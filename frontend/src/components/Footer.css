@@ -1,0 +1,94 @@
+/* Contemporary Classical - Footer */
+.app-footer {
+  width: 100%;
+  padding: 2rem;
+  background: var(--color-white);
+  border-top: 1px solid var(--color-gray-light);
+  margin-top: auto;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.footer-text {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-gray-medium);
+  margin: 0;
+}
+
+.footer-heart {
+  color: var(--color-accent);
+  display: inline-block;
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  10%, 30% {
+    transform: scale(1.1);
+  }
+  20%, 40% {
+    transform: scale(1);
+  }
+}
+
+.footer-link {
+  color: var(--color-black);
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px solid var(--color-gray-light);
+  transition: all 0.15s ease;
+}
+
+.footer-link:hover {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.footer-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--color-gray-light);
+}
+
+.footer-github {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-gray-dark);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.footer-github:hover {
+  color: var(--color-black);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .app-footer {
+    padding: 1.5rem;
+  }
+
+  .footer-content {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .footer-divider {
+    display: none;
+  }
+}
