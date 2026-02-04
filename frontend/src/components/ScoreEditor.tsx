@@ -27,6 +27,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
   const score = useNotationStore((state) => state.score);
   const setTempo = useNotationStore((state) => state.setTempo);
   const selectNote = useNotationStore((state) => state.selectNote);
+  const deselectAll = useNotationStore((state) => state.deselectAll);
   const selectedNoteIds = useNotationStore((state) => state.selectedNoteIds);
   const updateNote = useNotationStore((state) => state.updateNote);
   const currentDuration = useNotationStore((state) => state.currentDuration);
@@ -82,7 +83,7 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
       // Get latest state values for editing operations
-      const { selectedNoteIds, deleteNote, updateNote, deselectAll } = useNotationStore.getState();
+      const { selectedNoteIds, deleteNote, updateNote } = useNotationStore.getState();
 
       // Undo/Redo
       if (cmdOrCtrl && e.key === 'z' && !e.shiftKey) {
