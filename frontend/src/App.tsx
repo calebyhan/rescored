@@ -12,7 +12,7 @@ import './App.css';
 const DEV_MODE = true;
 
 // Sample job ID from completed backend job (has piano + vocals)
-const SAMPLE_JOB_ID = 'e0cc1572-7935-4cb7-8e99-ba0b4c15cf38';
+const SAMPLE_JOB_ID = '808dd8d5-ed68-46ac-9a16-6b98ba5e9794';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -81,12 +81,7 @@ function App() {
             {devView === 'loading' && <LoadingScreen onComplete={handleLoadingComplete} />}
             {devView === 'submission' && <JobSubmission onComplete={handleJobComplete} />}
             {devView === 'editor' && currentJobId && (
-              <div>
-                <button className="back-button" onClick={handleReset}>
-                  ← New Transcription
-                </button>
-                <ScoreEditor jobId={currentJobId} />
-              </div>
+              <ScoreEditor jobId={currentJobId} onBack={handleReset} />
             )}
           </>
         ) : (
@@ -96,12 +91,7 @@ function App() {
             {!currentJobId ? (
               <JobSubmission onComplete={handleJobComplete} />
             ) : (
-              <div>
-                <button className="back-button" onClick={handleReset}>
-                  ← New Transcription
-                </button>
-                <ScoreEditor jobId={currentJobId} />
-              </div>
+              <ScoreEditor jobId={currentJobId} onBack={handleReset} />
             )}
           </>
         )}

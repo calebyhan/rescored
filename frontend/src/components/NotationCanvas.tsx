@@ -4,7 +4,7 @@
  * Supports grand staff (treble + bass clefs) for piano.
  */
 import { useEffect, useRef } from 'react';
-import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, StaveConnector } from 'vexflow';
+import { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, StaveConnector, Barline } from 'vexflow';
 import { useNotationStore } from '../store/notation';
 import type { Note, Part } from '../store/notation';
 import './NotationCanvas.css';
@@ -74,6 +74,7 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
       const col = measureIdx % measuresPerRow;
       const x = 10 + col * staveWidth;
       let yOffset = systemSpacing + row * systemHeight;
+      const isLastMeasure = measureIdx === numMeasures - 1;
 
       // Render all instrument groups for this measure
       instrumentGroups.forEach((parts, groupIdx) => {
@@ -91,7 +92,8 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
             staveHeight,
             partSpacing,
             score,
-            containerRef.current
+            containerRef.current,
+            isLastMeasure
           );
           yOffset += staveHeight + partSpacing + staveHeight + partSpacing;
         } else {
@@ -108,7 +110,8 @@ export function NotationCanvas({ showControls, interactive, onNoteSelect, select
               staveWidth,
               staveHeight,
               score,
-              containerRef.current
+              containerRef.current,
+              isLastMeasure
             );
             yOffset += staveHeight + partSpacing;
           });
@@ -334,7 +337,8 @@ function renderGrandStaffMeasure(
   staveHeight: number,
   partSpacing: number,
   score: any,
-  containerRef?: HTMLDivElement | null
+  containerRef?: HTMLDivElement | null,
+  isLastMeasure?: boolean
 ): { trebleStave: Stave; bassStave: Stave } {
   const treblePart = parts[0]; // Treble clef (right hand)
   const bassPart = parts[1];   // Bass clef (left hand)
@@ -357,6 +361,10 @@ function renderGrandStaffMeasure(
       trebleStave.setText(instrumentName, 3, { shift_x: -60, shift_y: 0 });
     }
   }
+  // Add final bar line on last measure
+  if (isLastMeasure) {
+    trebleStave.setEndBarType(Barline.type.END);
+  }
   trebleStave.setContext(context).draw();
 
   // Create bass stave
@@ -368,6 +376,10 @@ function renderGrandStaffMeasure(
     if (vexflowKey && vexflowKey !== 'C') {
       bassStave.addKeySignature(vexflowKey);
     }
+  }
+  // Add final bar line on last measure
+  if (isLastMeasure) {
+    bassStave.setEndBarType(Barline.type.END);
   }
   bassStave.setContext(context).draw();
 
@@ -409,7 +421,8 @@ function renderSingleStaffMeasure(
   staveWidth: number,
   staveHeight: number,
   score: any,
-  containerRef?: HTMLDivElement | null
+  containerRef?: HTMLDivElement | null,
+  isLastMeasure?: boolean
 ): Stave {
   const measure = part.measures[measureIdx];
   const stave = new Stave(x, yOffset, staveWidth);
@@ -425,6 +438,11 @@ function renderSingleStaffMeasure(
     if (row === 0) {
       stave.setText(part.name || 'Instrument', 3, { shift_x: -60, shift_y: 0 });
     }
+  }
+
+  // Add final bar line on last measure
+  if (isLastMeasure) {
+    stave.setEndBarType(Barline.type.END);
   }
 
   stave.setContext(context).draw();

@@ -14,9 +14,10 @@ import './ScoreEditor.css';
 
 interface ScoreEditorProps {
   jobId: string;
+  onBack?: () => void;
 }
 
-export function ScoreEditor({ jobId }: ScoreEditorProps) {
+export function ScoreEditor({ jobId, onBack }: ScoreEditorProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [instruments, setInstruments] = useState<string[]>([]);
@@ -334,7 +335,11 @@ export function ScoreEditor({ jobId }: ScoreEditorProps) {
       <aside className="editor-sidebar">
         <div className="editor-sidebar-header">
           <h2>Score Editor</h2>
-          <div className="subtitle">Edit and export your transcription</div>
+          {onBack && (
+            <button className="back-button-inline" onClick={onBack}>
+              ← New Transcription
+            </button>
+          )}
         </div>
 
         <div className="editor-sidebar-content">
