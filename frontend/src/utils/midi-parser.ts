@@ -26,8 +26,11 @@ export async function parseMidiFile(
 ): Promise<Score> {
   const midi = new Midi(midiData);
 
-  // Extract metadata (use ?? to prefer options over MIDI headers)
-  const tempo = options.tempo ?? midi.header.tempos[0]?.bpm ?? 120;
+  // Extract metadata - prefer MIDI header tempo over audio detection
+  // MIDI note durations are based on the tempo in the MIDI file, not detected audio tempo
+  const midiHeaderTempo = midi.header.tempos[0]?.bpm;
+  const tempo = midiHeaderTempo ?? options.tempo ?? 120;
+  console.log(`[MIDI Parser] Tempo: MIDI header=${midiHeaderTempo}, options=${options.tempo}, final=${tempo}`);
   const timeSignature = options.timeSignature ?? {
     numerator: midi.header.timeSignatures[0]?.timeSignature[0] ?? 4,
     denominator: midi.header.timeSignatures[0]?.timeSignature[1] ?? 4,

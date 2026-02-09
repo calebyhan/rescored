@@ -12,7 +12,7 @@ import './App.css';
 const DEV_MODE = true;
 
 // Sample job ID from completed backend job (has piano + vocals)
-const SAMPLE_JOB_ID = '808dd8d5-ed68-46ac-9a16-6b98ba5e9794';
+const SAMPLE_JOB_ID = 'a6077f3c-17b7-4e5a-8a3f-068b20c25d29';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);

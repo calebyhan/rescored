@@ -40,7 +40,8 @@ class KeyAwareFilter:
         self,
         midi_path: Path,
         detected_key: str,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
+        tempo_bpm: Optional[float] = None
     ) -> Path:
         """
         Filter MIDI notes based on key signature.
@@ -49,6 +50,7 @@ class KeyAwareFilter:
             midi_path: Input MIDI file
             detected_key: Detected key (e.g., "C major", "A minor")
             output_path: Output path (default: input_path with _key_filtered suffix)
+            tempo_bpm: Correct tempo in BPM (if None, uses estimate_tempo which may be wrong)
 
         Returns:
             Path to filtered MIDI file
@@ -59,8 +61,11 @@ class KeyAwareFilter:
         # Load MIDI
         pm = pretty_midi.PrettyMIDI(str(midi_path))
 
-        # Create new MIDI with filtered notes
-        filtered_pm = pretty_midi.PrettyMIDI(initial_tempo=pm.estimate_tempo())
+        # Create new MIDI with filtered notes - use provided tempo or estimate
+        if tempo_bpm is not None:
+            filtered_pm = pretty_midi.PrettyMIDI(initial_tempo=tempo_bpm)
+        else:
+            filtered_pm = pretty_midi.PrettyMIDI(initial_tempo=pm.estimate_tempo())
 
         total_notes = 0
         kept_notes = 0

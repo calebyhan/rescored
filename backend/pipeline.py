@@ -416,6 +416,23 @@ class TranscriptionPipeline:
             else:
                 midi_path = self.transcribe_with_yourmt3(stem_path)
 
+            # Read tempo from MIDI (YourMT3+ tempo is more accurate than audio detection)
+            midi_tempo = self._read_midi_tempo(midi_path)
+            if midi_tempo is not None:
+                # Update metadata with MIDI tempo (override audio detection)
+                self.metadata["tempo"] = midi_tempo
+                print(f"   [Tempo] Using MIDI header tempo: {midi_tempo:.1f} BPM")
+            else:
+                # MIDI has no tempo event - estimate from note timings (more accurate than librosa)
+                import pretty_midi
+                pm = pretty_midi.PrettyMIDI(str(midi_path))
+                estimated_tempo = pm.estimate_tempo()
+                self.metadata["tempo"] = estimated_tempo
+                print(f"   [Tempo] Estimated from MIDI note timings: {estimated_tempo:.1f} BPM (audio detection was {self.metadata.get('tempo', 'N/A')})")
+
+            # Ensure MIDI has tempo (adds only if missing)
+            midi_path = self._fix_midi_tempo(midi_path, self.metadata["tempo"])
+
             stem_midis[stem_name] = midi_path
             print(f"   [Stem {stem_name}] ✓ Complete")
 
@@ -424,7 +441,8 @@ class TranscriptionPipeline:
 
         # Combine all MIDI files
         print(f"   Combining {len(stem_midis)} MIDI files...")
-        combined_pm = pretty_midi.PrettyMIDI()
+        # Use detected tempo for combined MIDI (don't use estimate_tempo which can be wrong)
+        combined_pm = pretty_midi.PrettyMIDI(initial_tempo=self.metadata["tempo"])
 
         for stem_name, midi_path in stem_midis.items():
             pm = pretty_midi.PrettyMIDI(str(midi_path))
@@ -517,6 +535,25 @@ class TranscriptionPipeline:
             # For now, use original YourMT3+ output for best musical accuracy
             print(f"   Using YourMT3+ output directly (preserving timing accuracy)")
             print(f"   Note: Frontend will handle note duration approximation for display")
+
+            # Read tempo from MIDI (YourMT3+ tempo is more accurate than audio detection)
+            midi_tempo = self._read_midi_tempo(midi_path)
+            if midi_tempo is not None:
+                # Update metadata with MIDI tempo (override audio detection)
+                detected_tempo = midi_tempo
+                self.metadata["tempo"] = midi_tempo
+                print(f"   [Tempo] Using MIDI header tempo: {midi_tempo:.1f} BPM")
+            else:
+                # MIDI has no tempo event - estimate from note timings (more accurate than librosa)
+                import pretty_midi
+                pm = pretty_midi.PrettyMIDI(str(midi_path))
+                estimated_tempo = pm.estimate_tempo()
+                detected_tempo = estimated_tempo
+                self.metadata["tempo"] = estimated_tempo
+                print(f"   [Tempo] Estimated from MIDI note timings: {estimated_tempo:.1f} BPM (audio detection was {detected_tempo})")
+
+            # Ensure MIDI has tempo (adds only if missing)
+            midi_path = self._fix_midi_tempo(midi_path, detected_tempo)
 
             return midi_path
         else:
@@ -1054,7 +1091,8 @@ class TranscriptionPipeline:
 
             filtered_path = filter.filter_midi_by_confidence(
                 filtered_path,
-                confidence_scores=None  # Use heuristics for now
+                confidence_scores=None,  # Use heuristics for now
+                tempo_bpm=self.metadata["tempo"]  # Pass correct tempo
             )
 
         # Apply key-aware filtering
@@ -1098,7 +1136,8 @@ class TranscriptionPipeline:
 
         filtered_path = filter.filter_midi_by_key(
             midi_path,
-            detected_key=detected_key
+            detected_key=detected_key,
+            tempo_bpm=self.metadata["tempo"]  # Pass correct tempo
         )
 
         return filtered_path
@@ -1299,6 +1338,72 @@ class TranscriptionPipeline:
         print(f"   Removed octave duplicates using pitch class deduplication")
 
         return mono_path
+
+    def _read_midi_tempo(self, midi_path: Path) -> Optional[float]:
+        """
+        Read tempo from MIDI file.
+
+        Args:
+            midi_path: Path to MIDI file
+
+        Returns:
+            Tempo in BPM, or None if no tempo found
+        """
+        try:
+            mid = mido.MidiFile(midi_path)
+            for track in mid.tracks:
+                for msg in track:
+                    if msg.type == 'set_tempo':
+                        return mido.tempo2bpm(msg.tempo)
+            return None
+        except Exception as e:
+            print(f"   [MIDI Tempo Read] Error reading {midi_path.name}: {e}")
+            return None
+
+    def _fix_midi_tempo(self, midi_path: Path, tempo_bpm: float) -> Path:
+        """
+        Ensure MIDI file has tempo in header. Preserves existing tempo if present.
+        YourMT3+ often doesn't write tempo, causing frontend parsing issues.
+
+        Args:
+            midi_path: Path to MIDI file
+            tempo_bpm: Fallback tempo in BPM (only used if MIDI has no tempo)
+
+        Returns:
+            Path to fixed MIDI file (same as input, modified in-place)
+        """
+        mid = mido.MidiFile(midi_path)
+
+        # Check if tempo already exists
+        has_tempo = False
+        for track in mid.tracks:
+            for msg in track:
+                if msg.type == 'set_tempo':
+                    # Tempo exists - DON'T override, YourMT3+ tempo is correct
+                    has_tempo = True
+                    existing_bpm = mido.tempo2bpm(msg.tempo)
+                    print(f"   [MIDI Tempo] Found existing tempo {existing_bpm:.1f} BPM in {midi_path.name}, keeping it")
+                    break
+            if has_tempo:
+                break
+
+        # Only add tempo if MIDI file has NO tempo at all
+        if not has_tempo and len(mid.tracks) > 0:
+            # Insert tempo at beginning of first track (after track name if present)
+            insert_idx = 0
+            for i, msg in enumerate(mid.tracks[0]):
+                if msg.type == 'track_name':
+                    insert_idx = i + 1
+                    break
+
+            tempo_msg = mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(tempo_bpm), time=0)
+            mid.tracks[0].insert(insert_idx, tempo_msg)
+
+            # Save fixed MIDI
+            mid.save(midi_path)
+            print(f"   [MIDI Tempo] Added missing tempo {tempo_bpm:.1f} BPM to {midi_path.name}")
+
+        return midi_path
 
     def _get_tempo_adaptive_thresholds(self, tempo_bpm: float) -> dict:
         """
