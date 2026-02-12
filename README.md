@@ -4,7 +4,7 @@ Convert YouTube videos into editable sheet music using AI.
 
 ## Deployment
 
-**Status**: Live and operational!
+**Status**: Live and operational! (for best results, use the local deployment)
 
 - Backend: https://calebhan-rescored.hf.space
 - Frontend: https://rescored.vercel.app
@@ -27,7 +27,7 @@ Rescored transcribes YouTube videos to professional-quality music notation:
 
 ## Getting Started
 
-For local development setup and installation instructions, see [CONTRIBUTORS.md](CONTRIBUTORS.md)
+For local development setup and installation instructions, see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Features
 
@@ -88,17 +88,6 @@ rescored/
 ├── stop.sh                       # Stop all services
 └── docker-compose.yml            # Docker setup (optional)
 ```
-
-## Documentation
-
-Comprehensive documentation is available in the [`docs/`](docs/) directory:
-
-- [Getting Started](docs/getting-started.md)
-- [Architecture Overview](docs/architecture/overview.md)
-- [Backend Pipeline](docs/backend/pipeline.md)
-- [Frontend Rendering](docs/frontend/notation-rendering.md)
-- [MVP Scope](docs/features/mvp.md)
-- [Known Challenges](docs/research/challenges.md)
 
 ## Accuracy Expectations
 
@@ -217,15 +206,6 @@ Evaluated on [**MAESTRO test set**](https://magenta.tensorflow.org/datasets/maes
 - Cloud storage integration
 - Job history and saved transcriptions
 - Collaboration features
-
-### Phase 4 (Future)
-- Mobile app (iOS/Android)
-- Real-time collaboration
-- API for third-party integrations
-
-## Development
-
-See [CONTRIBUTORS.md](CONTRIBUTORS.md) for setup instructions, running tests, and troubleshooting guides
 
 ## License
 
