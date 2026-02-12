@@ -10,14 +10,14 @@ export const ProductionWarning: React.FC<ProductionWarningProps> = ({ onClose })
     <div className="production-warning-overlay" onClick={onClose}>
       <div className="production-warning-modal" onClick={(e) => e.stopPropagation()}>
         <div className="production-warning-header">
-          <h2>⚠️ Production Version Notice</h2>
+          <h2>Production Version Notice</h2>
         </div>
         <div className="production-warning-content">
           <p>
             You're using the <strong>production version</strong> of Rescored. Please note:
           </p>
           <ul>
-            <li>This version is <strong>not actively maintained</strong></li>
+            <li>This version is <strong>not the most actively maintained (blame free hosting limitations 😔)</strong></li>
             <li>Processing will be <strong>significantly slower</strong> than local instances</li>
             <li>Limited resources may result in longer wait times</li>
           </ul>
@@ -30,7 +30,7 @@ export const ProductionWarning: React.FC<ProductionWarningProps> = ({ onClose })
             rel="noopener noreferrer"
             className="production-warning-github-link"
           >
-            📦 View on GitHub
+            View on GitHub
           </a>
         </div>
         <button className="production-warning-close-btn" onClick={onClose}>
