@@ -17,7 +17,7 @@ export const ProductionWarning: React.FC<ProductionWarningProps> = ({ onClose })
             You're using the <strong>production version</strong> of Rescored. Please note:
           </p>
           <ul>
-            <li>This version is <strong>not the most actively maintained (blame free hosting limitations 😔)</strong></li>
+            <li>This version is <strong>not the most actively maintained</strong> (blame free hosting limitations 😔)</li>
             <li>Processing will be <strong>significantly slower</strong> than local instances</li>
             <li>Limited resources may result in longer wait times</li>
           </ul>
