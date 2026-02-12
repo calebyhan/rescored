@@ -1,0 +1,130 @@
+.production-warning-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.production-warning-modal {
+  background: #1a1a1a;
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  padding: 0;
+  box-shadow: 0 8px 32px rgba(255, 152, 0, 0.3);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.production-warning-header {
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  padding: 20px;
+  border-radius: 10px 10px 0 0;
+}
+
+.production-warning-header h2 {
+  margin: 0;
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.production-warning-content {
+  padding: 24px;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.production-warning-content p {
+  margin: 0 0 16px 0;
+}
+
+.production-warning-content ul {
+  margin: 12px 0 20px 20px;
+  padding: 0;
+}
+
+.production-warning-content li {
+  margin: 8px 0;
+  color: #ffb74d;
+}
+
+.production-warning-content strong {
+  color: #ff9800;
+  font-weight: 600;
+}
+
+.production-warning-recommendation {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+  font-weight: 500;
+}
+
+.production-warning-github-link {
+  display: inline-block;
+  margin: 16px 0 8px 0;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.production-warning-github-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.production-warning-close-btn {
+  width: 100%;
+  padding: 16px;
+  background: #333;
+  color: white;
+  border: none;
+  border-top: 1px solid #444;
+  border-radius: 0 0 10px 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.production-warning-close-btn:hover {
+  background: #444;
+}
+
+.production-warning-close-btn:active {
+  background: #2a2a2a;
+}
