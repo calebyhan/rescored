@@ -7,10 +7,22 @@ interface ProductionWarningProps {
 
 export const ProductionWarning: React.FC<ProductionWarningProps> = ({ onClose }) => {
   return (
-    <div className="production-warning-overlay" onClick={onClose}>
-      <div className="production-warning-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="production-warning-overlay"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+    >
+      <div
+        className="production-warning-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="production-warning-title"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); e.stopPropagation(); }}
+      >
         <div className="production-warning-header">
-          <h2>Production Version Notice</h2>
+          <h2 id="production-warning-title">Production Version Notice</h2>
         </div>
         <div className="production-warning-content">
           <p>

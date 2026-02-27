@@ -62,7 +62,7 @@ export function InstrumentSelector({
 
   return (
     <div className="instrument-selector">
-      <label className="selector-label">Select Instruments:</label>
+      <span className="selector-label">Select Instruments:</span>
       <div className="instrument-grid">
         {INSTRUMENTS.map(instrument => (
           <button

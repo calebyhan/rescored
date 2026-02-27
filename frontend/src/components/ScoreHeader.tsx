@@ -23,7 +23,7 @@ export function ScoreHeader({
   onTempoChange,
 }: ScoreHeaderProps) {
   const [editing, setEditing] = useState(false);
-  const [tempValue, setTempValue] = useState(tempo);
+  const [tempValue, setTempValue] = useState<number>(0);
 
   const handleTempoClick = () => {
     setTempValue(tempo);
@@ -59,7 +59,14 @@ export function ScoreHeader({
       </div>
 
       <div className="metadata-row">
-        <div className="tempo-display" onClick={handleTempoClick} title="Click to edit tempo">
+        <div
+          className="tempo-display"
+          role="button"
+          tabIndex={0}
+          onClick={handleTempoClick}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleTempoClick(); }}
+          title="Click to edit tempo"
+        >
           {editing ? (
             <input
               type="number"
@@ -69,7 +76,6 @@ export function ScoreHeader({
               onKeyDown={handleKeyDown}
               min={40}
               max={240}
-              autoFocus
               className="tempo-input"
             />
           ) : (

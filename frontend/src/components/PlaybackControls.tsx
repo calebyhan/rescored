@@ -11,7 +11,7 @@ import * as Tone from 'tone';
 // useNotationStore is optional for tests; guard its usage
 import { useNotationStore } from '../store/notation';
 import { durationToSeconds } from '../utils/duration';
-import type { Note } from '../store/notation';
+import type { Note, Score } from '../store/notation';
 import './PlaybackControls.css';
 
 interface PlaybackControlsProps {
@@ -34,6 +34,85 @@ interface PlaybackControlsProps {
   onSeek?: (time: number) => void;
   onVolumeChange?: (volume: number) => void;
   onLoopToggle?: (enabled: boolean) => void;
+}
+
+function formatTime(totalSeconds: number): string {
+  const sec = Math.floor(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+interface NoteEvent {
+  time: number;
+  duration: number;
+  notes: Array<{ pitch: string; id: string }>;
+}
+
+function buildNoteTimeline(score: Score, tempo: number): NoteEvent[] {
+  const timeline: NoteEvent[] = [];
+
+  score.parts.forEach((part) => {
+    let partTime = 0;
+
+    part.measures.forEach((measure) => {
+      const notesByChord: Record<string, Note[]> = {};
+      const noteOrder: string[] = [];
+
+      for (let i = 0; i < measure.notes.length; i++) {
+        const note = measure.notes[i];
+        if (note.isRest) {
+          const restId = `rest-${i}`;
+          notesByChord[restId] = [note];
+          noteOrder.push(restId);
+        } else {
+          const chordId = note.chordId || `single-${note.id}`;
+          if (!notesByChord[chordId]) {
+            notesByChord[chordId] = [];
+            noteOrder.push(chordId);
+          }
+          notesByChord[chordId].push(note);
+        }
+      }
+
+      const processedChordIds = new Set<string>();
+      for (const chordId of noteOrder) {
+        if (processedChordIds.has(chordId)) continue;
+        processedChordIds.add(chordId);
+
+        const chordNotes = notesByChord[chordId];
+        const firstNote = chordNotes[0];
+
+        if (firstNote.isRest) {
+          partTime += durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
+          continue;
+        }
+
+        const noteDuration = durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
+        const noteTime = partTime;
+
+        let timelineEntry = timeline.find(e => Math.abs(e.time - noteTime) < 0.001);
+        if (!timelineEntry) {
+          timelineEntry = { time: noteTime, duration: noteDuration, notes: [] };
+          timeline.push(timelineEntry);
+        }
+
+        chordNotes.forEach((note) => {
+          if (note.pitch) {
+            timelineEntry!.notes.push({ pitch: note.pitch, id: note.id });
+          }
+        });
+
+        partTime += noteDuration;
+      }
+    });
+  });
+
+  timeline.sort((a, b) => a.time - b.time);
+  return timeline;
 }
 
 export function PlaybackControls(props: PlaybackControlsProps) {
@@ -147,86 +226,7 @@ export function PlaybackControls(props: PlaybackControlsProps) {
     Tone.Transport.bpm.value = tempo;
 
     // Build a timeline of all note events across all parts
-    interface NoteEvent {
-      time: number;
-      duration: number;
-      notes: Array<{ pitch: string; id: string }>;
-    }
-
-    const timeline: NoteEvent[] = [];
-
-    // Process all parts (treble + bass for grand staff)
-    score.parts.forEach((part) => {
-      let partTime = 0;
-
-      part.measures.forEach((measure) => {
-        // Group notes by chordId for accurate chord detection (notes within 50ms tolerance)
-        const notesByChord: Record<string, Note[]> = {};
-        const noteOrder: string[] = [];
-
-        for (let i = 0; i < measure.notes.length; i++) {
-          const note = measure.notes[i];
-
-          if (note.isRest) {
-            // Create unique group for each rest
-            const restId = `rest-${i}`;
-            notesByChord[restId] = [note];
-            noteOrder.push(restId);
-          } else {
-            // Group by chordId (assigned by MIDI parser based on simultaneous notes)
-            const chordId = note.chordId || `single-${note.id}`;
-            if (!notesByChord[chordId]) {
-              notesByChord[chordId] = [];
-              noteOrder.push(chordId);
-            }
-            notesByChord[chordId].push(note);
-          }
-        }
-
-        // Schedule each chord group in order (maintains temporal sequence)
-        const processedChordIds = new Set<string>();
-
-        for (const chordId of noteOrder) {
-          // Skip if already processed (chord spans multiple notes)
-          if (processedChordIds.has(chordId)) continue;
-          processedChordIds.add(chordId);
-
-          const chordNotes = notesByChord[chordId];
-          const firstNote = chordNotes[0];
-
-          if (firstNote.isRest) {
-            // Rest: advance time and continue
-            const restDuration = durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
-            partTime += restDuration;
-            continue;
-          }
-
-          // Calculate note duration and time
-          const noteDuration = durationToSeconds(firstNote.duration, tempo, firstNote.dotted);
-          const noteTime = partTime;
-
-          // Find or create timeline entry for this time
-          let timelineEntry = timeline.find(e => Math.abs(e.time - noteTime) < 0.001);
-          if (!timelineEntry) {
-            timelineEntry = { time: noteTime, duration: noteDuration, notes: [] };
-            timeline.push(timelineEntry);
-          }
-
-          // Add all notes in this chord to the timeline entry (they play simultaneously)
-          chordNotes.forEach((note) => {
-            if (note.pitch) {
-              timelineEntry!.notes.push({ pitch: note.pitch, id: note.id });
-            }
-          });
-
-          // Advance time by the note duration
-          partTime += noteDuration;
-        }
-      });
-    });
-
-    // Sort timeline by time
-    timeline.sort((a, b) => a.time - b.time);
+    const timeline = buildNoteTimeline(score, tempo);
 
     // Calculate total duration
     const totalDuration = timeline.length > 0
@@ -329,16 +329,6 @@ export function PlaybackControls(props: PlaybackControlsProps) {
     if (props?.onTempoChange) props.onTempoChange(clamped);
   };
 
-  function formatTime(totalSeconds: number) {
-    const sec = Math.floor(totalSeconds);
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
-    const ss = String(s).padStart(2, '0');
-    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
-  }
-
   return (
     <div className="playback-controls">
       <button
@@ -384,9 +374,9 @@ export function PlaybackControls(props: PlaybackControlsProps) {
       </button>
 
       <div className="tempo-control">
-        <label>Tempo</label>
+        <label htmlFor="playback-tempo-input">Tempo</label>
         <input
-          aria-label="tempo"
+          id="playback-tempo-input"
           type="number"
           min={props?.minTempo ?? 40}
           max={props?.maxTempo ?? 240}

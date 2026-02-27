@@ -1,12 +1,69 @@
 /**
  * Job submission form with progress tracking.
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useReducer } from 'react';
 import { api } from '../api/client';
 import type { ProgressUpdate } from '../api/client';
 import { InstrumentSelector, VOCAL_INSTRUMENTS } from './InstrumentSelector';
 import { Footer } from './Footer';
 import './JobSubmission.css';
+
+interface FormState {
+  youtubeUrl: string;
+  uploadMode: 'url' | 'file';
+  selectedFile: File | null;
+}
+
+type FormAction =
+  | { type: 'SET_URL'; url: string }
+  | { type: 'SET_MODE'; mode: 'url' | 'file' }
+  | { type: 'SET_FILE'; file: File | null }
+  | { type: 'RESET_FORM' };
+
+const initialFormState: FormState = { youtubeUrl: '', uploadMode: 'url', selectedFile: null };
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'SET_URL': return { ...state, youtubeUrl: action.url };
+    case 'SET_MODE': return { ...state, uploadMode: action.mode };
+    case 'SET_FILE': return { ...state, selectedFile: action.file };
+    case 'RESET_FORM': return initialFormState;
+    default: return state;
+  }
+}
+
+type JobStatus = 'idle' | 'submitting' | 'processing' | 'failed';
+
+interface JobState {
+  status: JobStatus;
+  error: string | null;
+  progress: number;
+  progressMessage: string;
+}
+
+type JobAction =
+  | { type: 'SUBMIT' }
+  | { type: 'START_PROCESSING' }
+  | { type: 'PROGRESS'; progress: number; message: string }
+  | { type: 'COMPLETE' }
+  | { type: 'ERROR'; error: string }
+  | { type: 'SET_ERROR'; error: string | null }
+  | { type: 'RESET' };
+
+const initialJobState: JobState = { status: 'idle', error: null, progress: 0, progressMessage: '' };
+
+function jobReducer(state: JobState, action: JobAction): JobState {
+  switch (action.type) {
+    case 'SUBMIT': return { ...state, status: 'submitting', error: null };
+    case 'START_PROCESSING': return { ...state, status: 'processing', progress: 0, progressMessage: 'Starting transcription...' };
+    case 'PROGRESS': return { ...state, progress: action.progress, progressMessage: action.message };
+    case 'COMPLETE': return { ...state, status: 'idle', progress: 100, progressMessage: 'Transcription complete!' };
+    case 'ERROR': return { ...state, status: 'failed', error: action.error };
+    case 'SET_ERROR': return { ...state, error: action.error };
+    case 'RESET': return initialJobState;
+    default: return state;
+  }
+}
 
 interface JobSubmissionProps {
   onComplete?: (jobId: string) => void;
@@ -14,15 +71,12 @@ interface JobSubmissionProps {
 }
 
 export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps) {
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [uploadMode, setUploadMode] = useState<'url' | 'file'>('url');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [formState, formDispatch] = useReducer(formReducer, initialFormState);
+  const { youtubeUrl, uploadMode, selectedFile } = formState;
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>(['piano']);
   const [vocalInstrument, setVocalInstrument] = useState('violin');
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'processing' | 'failed'>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [progressMessage, setProgressMessage] = useState('');
+  const [jobState, dispatch] = useReducer(jobReducer, initialJobState);
+  const { status, error, progress, progressMessage } = jobState;
   const wsRef = useRef<WebSocket | null>(null);
 
   // Cleanup WebSocket on unmount
@@ -48,29 +102,29 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    dispatch({ type: 'SET_ERROR', error: null });
 
     // Validate based on mode
     if (uploadMode === 'url') {
       const validation = validateUrl(youtubeUrl);
       if (validation) {
-        setError(validation);
+        dispatch({ type: 'SET_ERROR', error: validation });
         return;
       }
     } else {
       if (!selectedFile) {
-        setError('Please select an audio file');
+        dispatch({ type: 'SET_ERROR', error: 'Please select an audio file' });
         return;
       }
     }
 
     // Validate at least one instrument is selected
     if (selectedInstruments.length === 0) {
-      setError('Please select at least one instrument');
+      dispatch({ type: 'SET_ERROR', error: 'Please select at least one instrument' });
       return;
     }
 
-    setStatus('submitting');
+    dispatch({ type: 'SUBMIT' });
 
     console.log('[DEBUG] About to submit job with instruments:', selectedInstruments);
 
@@ -82,25 +136,20 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
         ? await api.submitJob(youtubeUrl, { instruments: selectedInstruments, vocalInstrument: vocalProgram })
         : await api.submitFileJob(selectedFile!, { instruments: selectedInstruments, vocalInstrument: vocalProgram });
 
-      setYoutubeUrl('');
-      setSelectedFile(null);
+      formDispatch({ type: 'RESET_FORM' });
       if (onJobSubmitted) onJobSubmitted(response);
 
       // Switch to processing status and connect WebSocket
-      setStatus('processing');
-      setProgress(0);
-      setProgressMessage('Starting transcription...');
+      dispatch({ type: 'START_PROCESSING' });
 
       // Connect WebSocket for progress updates
       wsRef.current = api.connectWebSocket(
         response.job_id,
         (update: ProgressUpdate) => {
           if (update.type === 'progress') {
-            setProgress(update.progress || 0);
-            setProgressMessage(update.message || `Processing: ${update.stage}`);
+            dispatch({ type: 'PROGRESS', progress: update.progress || 0, message: update.message || `Processing: ${update.stage}` });
           } else if (update.type === 'completed') {
-            setProgress(100);
-            setProgressMessage('Transcription complete!');
+            dispatch({ type: 'COMPLETE' });
             if (wsRef.current) {
               wsRef.current.close();
               wsRef.current = null;
@@ -108,11 +157,10 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
             // Wait a moment to show completion, then switch to editor
             setTimeout(() => {
               if (onComplete) onComplete(response.job_id);
-              setStatus('idle');
+              dispatch({ type: 'RESET' });
             }, 500);
           } else if (update.type === 'error') {
-            setStatus('failed');
-            setError(update.error?.message || 'Transcription failed');
+            dispatch({ type: 'ERROR', error: update.error?.message || 'Transcription failed' });
             if (wsRef.current) {
               wsRef.current.close();
               wsRef.current = null;
@@ -121,8 +169,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
         },
         (error) => {
           console.error('WebSocket error:', error);
-          setStatus('failed');
-          setError('Connection error. Please try again.');
+          dispatch({ type: 'ERROR', error: 'Connection error. Please try again.' });
         }
       );
 
@@ -130,25 +177,22 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
       const pollInterval = setInterval(async () => {
         try {
           const jobStatus = await api.getJobStatus(response.job_id);
-          setProgress(jobStatus.progress);
-          setProgressMessage(jobStatus.status_message || 'Processing...');
+          dispatch({ type: 'PROGRESS', progress: jobStatus.progress, message: jobStatus.status_message || 'Processing...' });
 
           if (jobStatus.status === 'completed') {
             clearInterval(pollInterval);
-            setProgress(100);
-            setProgressMessage('Transcription complete!');
+            dispatch({ type: 'COMPLETE' });
             if (wsRef.current) {
               wsRef.current.close();
               wsRef.current = null;
             }
             setTimeout(() => {
               if (onComplete) onComplete(response.job_id);
-              setStatus('idle');
+              dispatch({ type: 'RESET' });
             }, 500);
           } else if (jobStatus.status === 'failed') {
             clearInterval(pollInterval);
-            setStatus('failed');
-            setError(jobStatus.error?.message || 'Transcription failed');
+            dispatch({ type: 'ERROR', error: jobStatus.error?.message || 'Transcription failed' });
             if (wsRef.current) {
               wsRef.current.close();
               wsRef.current = null;
@@ -168,8 +212,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
         }
       };
     } catch (err) {
-      setStatus('failed');
-      setError(err instanceof Error ? err.message : 'Failed to submit job');
+      dispatch({ type: 'ERROR', error: err instanceof Error ? err.message : 'Failed to submit job' });
       return;
     }
   };
@@ -201,14 +244,14 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
             />
 
             <div className="form-group">
-              <label>Input Method</label>
+              <span className="form-label">Input Method</span>
               <div className="upload-mode-selector">
                 <button
                   type="button"
                   className={uploadMode === 'url' ? 'active' : ''}
                   onClick={() => {
-                    setUploadMode('url');
-                    setError(null);
+                    formDispatch({ type: 'SET_MODE', mode: 'url' });
+                    dispatch({ type: 'SET_ERROR', error: null });
                   }}
                 >
                   YouTube URL
@@ -217,8 +260,8 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
                   type="button"
                   className={uploadMode === 'file' ? 'active' : ''}
                   onClick={() => {
-                    setUploadMode('file');
-                    setError(null);
+                    formDispatch({ type: 'SET_MODE', mode: 'file' });
+                    dispatch({ type: 'SET_ERROR', error: null });
                   }}
                 >
                   Upload File
@@ -233,12 +276,12 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
                   id="youtube-url"
                   type="text"
                   value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  onChange={(e) => formDispatch({ type: 'SET_URL', url: e.target.value })}
                   placeholder="https://www.youtube.com/watch?v=..."
                   required
                   onBlur={() => {
                     const validation = validateUrl(youtubeUrl);
-                    if (validation) setError(validation);
+                    if (validation) dispatch({ type: 'SET_ERROR', error: validation });
                   }}
                 />
               </div>
@@ -254,11 +297,11 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
                     if (file) {
                       const maxSize = 100 * 1024 * 1024; // 100MB
                       if (file.size > maxSize) {
-                        setError('File too large. Maximum size: 100MB');
-                        setSelectedFile(null);
+                        dispatch({ type: 'SET_ERROR', error: 'File too large. Maximum size: 100MB' });
+                        formDispatch({ type: 'SET_FILE', file: null });
                       } else {
-                        setSelectedFile(file);
-                        setError(null);
+                        formDispatch({ type: 'SET_FILE', file });
+                        dispatch({ type: 'SET_ERROR', error: null });
                       }
                     }
                   }}
@@ -309,7 +352,7 @@ export function JobSubmission({ onComplete, onJobSubmitted }: JobSubmissionProps
           <div className="error-message">
             <h2>Transcription Failed</h2>
             <p>{error || 'An unexpected error occurred. Please try again.'}</p>
-            <button onClick={() => setStatus('idle')}>← Try Again</button>
+            <button onClick={() => dispatch({ type: 'RESET' })}>← Try Again</button>
           </div>
         </div>
       )}
